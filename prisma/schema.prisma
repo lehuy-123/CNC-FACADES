@@ -1,0 +1,94 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrderStatus {
+  PENDING
+  QUOTED
+  PROCESSING
+  COMPLETED
+}
+
+// Sản phẩm mẫu của xưởng
+model Product {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  category      String   @default("Khác")
+  description   String?
+  price         Float?
+  dimensions    String?
+  material      String?
+  imageUrl      String
+  baseAiContext String?  @db.Text
+  cadTemplate   Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+}
+
+// Đơn đặt hàng gia công theo yêu cầu
+model CustomOrder {
+  id                String      @id @default(uuid()) @db.Uuid
+  // Mã tra cứu hiển thị cho khách, ví dụ CNC-7K2P9X
+  code              String?
+  customerName      String
+  phone             String
+  requirements      String
+  cadFileUrl        String?
+  // Ảnh mẫu do khách tải lên
+  referenceImageUrl String?
+  aiSketchUrl       String?
+  modifiedParams    Json?
+  status            OrderStatus @default(PENDING)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([status, createdAt])
+  @@index([code])
+}
+
+enum AccessRequestType {
+  REGISTER
+  RESET
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Tài khoản nhân viên được admin duyệt để vào dashboard (admin chính nằm trong .env)
+model AdminAccount {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique
+  fullName     String
+  phone        String
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Yêu cầu đăng ký / quên mật khẩu. Admin duyệt thủ công rồi liên hệ qua điện thoại.
+model AccessRequest {
+  id        String              @id @default(uuid()) @db.Uuid
+  type      AccessRequestType
+  fullName  String              @default("")
+  phone     String
+  username  String
+  status    AccessRequestStatus @default(PENDING)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([status, createdAt])
+}

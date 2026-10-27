@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1130" viewBox="0 0 1600 1130" font-family="Arial, Helvetica, sans-serif">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="#1d4ed8"/></marker>
+<pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20,0 L0,0 0,20" fill="none" stroke="#eef2f7" stroke-width="1"/></pattern></defs>
+<rect width="1600" height="1130" fill="#ffffff"/>
+<rect x="40" y="40" width="1520" height="1050" fill="url(#grid)"/>
+<rect x="20" y="20" width="1560" height="1090" fill="none" stroke="#0f172a" stroke-width="1"/>
+<rect x="40" y="40" width="1520" height="1050" fill="none" stroke="#0f172a" stroke-width="2.5"/>
+<text x="150.0" y="86.0" font-size="13" font-weight="bold" fill="#0f172a" letter-spacing="0.5">HÌNH CHIẾU BẰNG</text>
+<rect x="157.7" y="144.0" width="547.5" height="7.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="150.0" y="100.0" width="574.3" height="95.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="150.0" y="100.0" width="7.7" height="95.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<circle cx="245.7" cy="147.9" r="5.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<path d="M235.0,147.9H256.5M245.7,137.1V158.6" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="4 2"/>
+<circle cx="666.9" cy="147.9" r="5.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<path d="M656.1,147.9H677.6M666.9,137.1V158.6" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="4 2"/>
+<path d="M147.0,100.0H99.0M147.0,195.7H99.0" stroke="#1d4ed8" stroke-width="0.8" fill="none"/>
+<line x1="105.0" y1="100.0" x2="105.0" y2="195.7" stroke="#1d4ed8" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text x="100.0" y="147.9" font-size="14" fill="#1d4ed8" text-anchor="middle" transform="rotate(-90 100.0 147.9)">50</text>
+<text x="150.0" y="281.7" font-size="13" font-weight="bold" fill="#0f172a" letter-spacing="0.5">HÌNH CHIẾU ĐỨNG</text>
+<polygon points="157.7,303.4 705.1,303.4 157.7,611.6" fill="#ffffff" stroke="#0f172a" stroke-width="1.6" stroke-linejoin="round"/>
+<rect x="150.0" y="295.7" width="574.3" height="7.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="150.0" y="295.7" width="7.7" height="382.9" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<circle cx="284.0" cy="422.1" r="43.1" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<path d="M235.9,422.1H332.1M284.0,374.0V470.1" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="4 2"/>
+<circle cx="427.6" cy="381.9" r="28.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<path d="M393.9,381.9H461.3M427.6,348.1V415.6" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="4 2"/>
+<circle cx="571.1" cy="341.7" r="17.2" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<path d="M548.9,341.7H593.4M571.1,319.4V363.9" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="4 2"/>
+<path d="M150.0,681.6V729.6M724.3,681.6V729.6" stroke="#1d4ed8" stroke-width="0.8" fill="none"/>
+<line x1="150.0" y1="723.6" x2="724.3" y2="723.6" stroke="#1d4ed8" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text x="437.1" y="718.6" font-size="14" fill="#1d4ed8" text-anchor="middle">300</text>
+<path d="M147.0,295.7H99.0M147.0,678.6H99.0" stroke="#1d4ed8" stroke-width="0.8" fill="none"/>
+<line x1="105.0" y1="295.7" x2="105.0" y2="678.6" stroke="#1d4ed8" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text x="100.0" y="487.1" font-size="14" fill="#1d4ed8" text-anchor="middle" transform="rotate(-90 100.0 487.1)">200</text>
+<text x="824.3" y="281.7" font-size="13" font-weight="bold" fill="#0f172a" letter-spacing="0.5">HÌNH CHIẾU CẠNH</text>
+<rect x="824.3" y="295.7" width="95.7" height="382.9" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="868.3" y="303.4" width="7.7" height="308.2" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<rect x="824.3" y="295.7" width="95.7" height="7.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.6"/>
+<circle cx="872.1" cy="343.6" r="7.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<path d="M859.5,343.6H884.8M872.1,330.9V356.2" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="4 2"/>
+<circle cx="872.1" cy="644.1" r="7.7" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<path d="M859.5,644.1H884.8M872.1,631.5V656.8" stroke="#dc2626" stroke-width="0.6" stroke-dasharray="4 2"/>
+<path d="M824.3,681.6V729.6M920.0,681.6V729.6" stroke="#1d4ed8" stroke-width="0.8" fill="none"/>
+<line x1="824.3" y1="723.6" x2="920.0" y2="723.6" stroke="#1d4ed8" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text x="872.1" y="718.6" font-size="14" fill="#1d4ed8" text-anchor="middle">50</text>
+<path d="M923.0,303.4H966.0M923.0,678.6H966.0" stroke="#1d4ed8" stroke-width="0.8" fill="none"/>
+<line x1="960.0" y1="303.4" x2="960.0" y2="678.6" stroke="#1d4ed8" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text x="955.0" y="491.0" font-size="14" fill="#1d4ed8" text-anchor="middle" transform="rotate(-90 955.0 491.0)">196</text>
+<path d="M923.0,295.7H966.0M923.0,303.4H966.0" stroke="#1d4ed8" stroke-width="0.8" fill="none"/>
+<line x1="960.0" y1="295.7" x2="960.0" y2="303.4" stroke="#1d4ed8" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text x="1040.0" y="86.0" font-size="13" font-weight="bold" fill="#0f172a" letter-spacing="0.5">HÌNH CHIẾU TRỤC ĐO</text>
+<polygon points="1140.5,134.7 1143.9,136.6 1186.6,112.0 1183.2,110.0" fill="#6b7280" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1140.5,332.0 1143.9,334.0 1143.9,136.6 1140.5,332.0" fill="#4b5563" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1143.9,334.0 1186.6,309.3 1186.6,112.0 1143.9,136.6" fill="#374151" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1163.5,129.2 1407.9,270.3 1163.5,288.1" fill="#4b5563" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1167.0,127.3 1411.3,268.4 1167.0,286.1" fill="#4b5563" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1163.5,288.1 1407.9,270.3 1411.3,268.4 1167.0,286.1" fill="#374151" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1163.5,129.2 1407.9,270.3 1411.3,268.4 1167.0,127.3" fill="#6b7280" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1140.5,134.7 1396.8,282.7 1439.5,258.0 1183.2,110.0" fill="#6b7280" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1140.5,138.6 1396.8,286.6 1396.8,282.7 1140.5,138.6" fill="#4b5563" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<polygon points="1396.8,286.6 1439.5,261.9 1439.5,258.0 1396.8,282.7" fill="#374151" stroke="#d1d5db" stroke-width="0.9" stroke-linejoin="round"/>
+<ellipse cx="1163.5" cy="148.0" rx="3.6" ry="2.2" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>
+<ellipse cx="1163.5" cy="302.9" rx="3.6" ry="2.2" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>
+<ellipse cx="1204.6" cy="149.0" rx="2.7" ry="1.6" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>
+<ellipse cx="1392.5" cy="257.5" rx="2.7" ry="1.6" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>
+<ellipse cx="1221.6" cy="222.0" rx="20.4" ry="12.2" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>
+<ellipse cx="1285.7" cy="238.3" rx="13.6" ry="8.2" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>
+<ellipse cx="1349.8" cy="254.5" rx="8.2" ry="4.9" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>
+<text x="1040.0" y="534.0" font-size="13" font-weight="bold" fill="#0f172a" letter-spacing="0.5">BẢNG KÊ CHI TIẾT</text>
+<rect x="1040" y="544" width="520" height="92" fill="#ffffff" stroke="#0f172a" stroke-width="1.2"/>
+<line x1="1080" y1="544" x2="1080" y2="636" stroke="#0f172a" stroke-width="0.8"/>
+<line x1="1310" y1="544" x2="1310" y2="636" stroke="#0f172a" stroke-width="0.8"/>
+<line x1="1350" y1="544" x2="1350" y2="636" stroke="#0f172a" stroke-width="0.8"/>
+<rect x="1040" y="544" width="520" height="23" fill="#e2e8f0" stroke="#0f172a" stroke-width="1.2"/>
+<text x="1060.0" y="560.0" font-size="12" fill="#0f172a" text-anchor="middle" font-weight="bold">STT</text>
+<text x="1088.0" y="560.0" font-size="12" fill="#0f172a" text-anchor="start" font-weight="bold">Tên chi tiết</text>
+<text x="1330.0" y="560.0" font-size="12" fill="#0f172a" text-anchor="middle" font-weight="bold">SL</text>
+<text x="1358.0" y="560.0" font-size="12" fill="#0f172a" text-anchor="start" font-weight="bold">Dài × Sâu × Cao (mm)</text>
+<line x1="1040" y1="567" x2="1560" y2="567" stroke="#0f172a" stroke-width="0.5"/>
+<text x="1060.0" y="583.0" font-size="12" fill="#0f172a" text-anchor="middle">1</text>
+<text x="1088.0" y="583.0" font-size="12" fill="#0f172a" text-anchor="start">Bản thép ngang đỡ kệ</text>
+<text x="1330.0" y="583.0" font-size="12" fill="#0f172a" text-anchor="middle">1</text>
+<text x="1358.0" y="583.0" font-size="12" fill="#0f172a" text-anchor="start">300 × 50 × 4</text>
+<line x1="1040" y1="590" x2="1560" y2="590" stroke="#0f172a" stroke-width="0.5"/>
+<text x="1060.0" y="606.0" font-size="12" fill="#0f172a" text-anchor="middle">2</text>
+<text x="1088.0" y="606.0" font-size="12" fill="#0f172a" text-anchor="start">Bản thép dọc áp tường</text>
+<text x="1330.0" y="606.0" font-size="12" fill="#0f172a" text-anchor="middle">1</text>
+<text x="1358.0" y="606.0" font-size="12" fill="#0f172a" text-anchor="start">4 × 50 × 200</text>
+<line x1="1040" y1="613" x2="1560" y2="613" stroke="#0f172a" stroke-width="0.5"/>
+<text x="1060.0" y="629.0" font-size="12" fill="#0f172a" text-anchor="middle">3</text>
+<text x="1088.0" y="629.0" font-size="12" fill="#0f172a" text-anchor="start">Gân tam giác tăng cứng</text>
+<text x="1330.0" y="629.0" font-size="12" fill="#0f172a" text-anchor="middle">1</text>
+<text x="1358.0" y="629.0" font-size="12" fill="#0f172a" text-anchor="start">286 × 4 × 161</text>
+<text x="1040.0" y="830.0" font-size="13" font-weight="bold" fill="#0f172a" letter-spacing="0.5">GHI CHÚ KỸ THUẬT</text>
+<text x="1040" y="848.0" font-size="12" fill="#334155">• Cắt laser fiber độ chính xác ±0.03mm</text>
+<text x="1040" y="866.0" font-size="12" fill="#334155">• Hàn TIG ngấu phẳng gân tăng cứng chịu tải 80kg</text>
+<text x="1040" y="884.0" font-size="12" fill="#334155">• 3 lỗ tròn thoát trọng lượng thẩm mỹ đường kính 45mm, 30mm, 18mm</text>
+<text x="1040" y="902.0" font-size="12" fill="#334155">• Khoét 2 lỗ fi 8mm liên kết tường và 2 lỗ fi 6mm bắt đợt kệ</text>
+<rect x="1040" y="935" width="520" height="155" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+<line x1="1040" y1="983" x2="1560" y2="983" stroke="#0f172a" stroke-width="1.2"/>
+<line x1="1360" y1="983" x2="1360" y2="1090" stroke="#0f172a" stroke-width="1"/>
+<text x="1052" y="965" font-size="20" font-weight="bold" fill="#0f172a">PÁT ĐỠ TAM GIÁC CHỊU LỰC CNC</text>
+<text x="1548" y="965" font-size="12" fill="#475569" text-anchor="end">CNC &amp; AI Workshop</text>
+<text x="1052" y="1007" font-size="13" fill="#0f172a">Vật liệu: Thép tấm SS400 dày 4.0mm</text>
+<text x="1052" y="1031" font-size="13" fill="#0f172a">Hoàn thiện: Sơn tĩnh điện sần đen mờ cao cấp</text>
+<text x="1052" y="1055" font-size="13" fill="#0f172a">Kích thước tổng: 300 × 50 × 200 mm</text>
+<text x="1052" y="1079" font-size="13" fill="#0f172a">(Dài × Sâu × Cao) · 3 chi tiết</text>
+<text x="1372" y="1007" font-size="13" fill="#0f172a">Mã: CAD-TEST</text>
+<text x="1372" y="1031" font-size="13" fill="#0f172a">Ngày: 26/10/2026</text>
+<text x="1372" y="1055" font-size="13" fill="#0f172a">Đơn vị: mm</text>
+<text x="1372" y="1079" font-size="13" fill="#0f172a">Tỷ lệ: NTS</text>
+<text x="60" y="1078" font-size="12" fill="#b45309">⚠ Bản phác thảo do AI dựng tự động – kích thước cần kỹ thuật viên xưởng kiểm tra &amp; xác nhận trước khi gia công.</text>
+</svg>
