@@ -9,6 +9,8 @@ import {
   type CadHole,
   sanitizeSpec,
   bounds,
+  isWardrobeSpec,
+  isStrutBracketSpec,
   renderSvg,
   renderDxf,
   render3dViewSvg,
@@ -133,6 +135,49 @@ function buildParametricCadSpec(desc: string): CadSpec {
       : /anod/i.test(lower)
         ? "Anodized mạ màu"
         : "Sơn tĩnh điện chống rỉ";
+
+  // CASE 0: KE ĐỠ KỆ CHỮ L THANH GIẰNG 3 LỖ TRÒN / PÁT ĐỠ CHỮ L CHỊU LỰC
+  if (/ke đỡ|ke chữ l|pát đỡ|giá đỡ chữ l|thanh giằng|bracket/i.test(lower)) {
+    const bL = length >= 80 && length <= 1500 ? length : 250;
+    const bW = depth >= 20 && depth <= 300 ? depth : 40;
+    const bH = height >= 80 && height <= 1500 ? height : 200;
+    const bT = 5;
+    return {
+      title: `Ke đỡ kệ chữ L thanh giằng 3 lỗ chịu lực CNC (Theo thông số L=${bL} x W=${bW} x H=${bH} x T=${bT} mm)`,
+      material: "Thép kết cấu SS400 dày 5.0mm cắt Laser & Chấn CNC",
+      finish: "Sơn tĩnh điện đen mờ cao cấp",
+      parts: [
+        { name: "Thân ke chữ L cánh ngang (Bo đầu R20)", x: 0, y: bH - bT, z: 0, w: bL, h: bT, d: bW },
+        { name: "Thân ke chữ L cánh đứng (Bo đáy R20)", x: 0, y: 0, z: 0, w: bT, h: bH - bT, d: bW },
+        {
+          name: "Thanh giằng chéo đục 3 lỗ tròn",
+          x: bT,
+          y: Math.round(bH * 0.34),
+          z: Math.round((bW - bT) / 2),
+          w: Math.round(bL * 0.68) - bT,
+          h: Math.round(bH * 0.66) - bT,
+          d: bT,
+          shape: "triangle",
+        },
+      ],
+      holes: [
+        { x: bT, y: Math.round(bH * 0.79), z: Math.round(bW / 2), diameter: 6.5, axis: "x" },
+        { x: bT, y: 26, z: Math.round(bW / 2), diameter: 6.5, axis: "x" },
+        { x: 42, y: bH, z: Math.round(bW / 2), diameter: 6, axis: "y" },
+        { x: bL - 22, y: bH, z: Math.round(bW / 2), diameter: 6, axis: "y" },
+        { x: Math.round(bL * 0.22), y: Math.round(bH * 0.51), z: Math.round(bW / 2), diameter: 18, axis: "z" },
+        { x: Math.round(bL * 0.36), y: Math.round(bH * 0.66), z: Math.round(bW / 2), diameter: 18, axis: "z" },
+        { x: Math.round(bL * 0.50), y: Math.round(bH * 0.81), z: Math.round(bW / 2), diameter: 18, axis: "z" },
+      ],
+      notes: [
+        "Thân chữ L chấn CNC góc 90 độ, 2 đầu mút bo tròn bán nguyệt R = W/2",
+        "Thanh giằng chéo đột 3 lỗ tròn Ø18mm cách đều dọc theo trục nghiêng",
+        "Đầu trên thanh giằng đột mộng chữ nhật 14x5mm xuyên cánh ngang & hàn TIG âm",
+        "Cánh đứng khoan 2 lỗ vít âm côn Ø6.5 / Ø12x90° bắt phẳng mặt tường",
+      ],
+      assumptions: [`Kích thước điều chỉnh: Dài ${bL}mm × Rộng ${bW}mm × Cao ${bH}mm × Dày ${bT}mm`],
+    };
+  }
 
   // CASE 1: SÀO PHƠI ĐỒ / GIÁ TREO QUẦN ÁO (Đứng trên sàn)
   if (/sào|phơi|quần áo/i.test(lower)) {
@@ -893,27 +938,31 @@ export async function generateParametricDesign(
     }
 
     if (!cadTemplate) {
-      if (/pát|giá đỡ|tam giác|bracket/i.test(product.name)) {
+      if (/ke đỡ|ke chữ l|pát|giá đỡ|tam giác|thanh giằng|bracket/i.test(product.name)) {
         cadTemplate = {
           title: product.name,
-          baseDimensions: { length: 300, width: 50, height: 200, thickness: 4 },
-          material: product.material || "Thép tấm SS400 dày 4.0mm",
+          baseDimensions: { length: 250, width: 40, height: 200, thickness: 5 },
+          material: product.material || "Thép kết cấu SS400 dày 5.0mm",
           finish: "Sơn tĩnh điện đen mờ cao cấp",
           parts: [
-            { name: "Bản thép ngang đỡ kệ", x: 0, y: 196, z: 0, w: 300, h: 4, d: 50 },
-            { name: "Bản thép dọc áp tường", x: 0, y: 0, z: 0, w: 4, h: 200, d: 50 },
-            { name: "Gân tam giác tăng cứng", x: 4, y: 0, z: 23, w: 296, h: 196, d: 4, shape: "triangle" },
+            { name: "Thân ke chữ L cánh ngang (Bo đầu R20)", x: 0, y: 195, z: 0, w: 250, h: 5, d: 40 },
+            { name: "Thân ke chữ L cánh đứng (Bo đáy R20)", x: 0, y: 0, z: 0, w: 5, h: 195, d: 40 },
+            { name: "Thanh giằng chéo đục 3 lỗ tròn", x: 5, y: 68, z: 17.5, w: 165, h: 127, d: 5, shape: "triangle" },
           ],
           holes: [
-            { x: 4, y: 170, z: 25, diameter: 8, axis: "x" },
-            { x: 4, y: 30, z: 25, diameter: 8, axis: "x" },
-            { x: 50, y: 200, z: 25, diameter: 6, axis: "y" },
-            { x: 270, y: 200, z: 25, diameter: 6, axis: "y" },
-            { x: 75, y: 130, z: 25, diameter: 45, axis: "z" },
-            { x: 150, y: 85, z: 25, diameter: 30, axis: "z" },
-            { x: 220, y: 45, z: 25, diameter: 18, axis: "z" },
+            { x: 5, y: 158, z: 20, diameter: 6.5, axis: "x" },
+            { x: 5, y: 26, z: 20, diameter: 6.5, axis: "x" },
+            { x: 42, y: 200, z: 20, diameter: 6, axis: "y" },
+            { x: 228, y: 200, z: 20, diameter: 6, axis: "y" },
+            { x: 52, y: 104, z: 20, diameter: 18, axis: "z" },
+            { x: 88, y: 132, z: 20, diameter: 18, axis: "z" },
+            { x: 124, y: 160, z: 20, diameter: 18, axis: "z" },
           ],
-          notes: ["Cắt laser fiber ±0.03mm", "Hàn TIG ngấu phẳng", "3 lỗ thoát trọng lượng tam giác"],
+          notes: [
+            "Cắt Laser Fiber CNC ±0.05mm, bo tròn 2 đầu R20mm",
+            "Thanh giằng chéo bản 32x5mm đột 3 lỗ tròn Ø18mm cách đều",
+            "Đầu trên thanh giằng đột mộng chữ nhật 14x5mm xuyên cánh ngang & hàn TIG",
+          ],
         };
       } else {
         cadTemplate = {
@@ -935,6 +984,44 @@ export async function generateParametricDesign(
 
     if (!baseAiContext) {
       baseAiContext = "Bản vẽ kỹ thuật cơ khí CNC định hình. Gia công cắt laser & chấn gấp CNC chính xác.";
+    }
+
+    // Kiểm tra nếu là khuôn mẫu CAD chuyên biệt (Ke đỡ chữ L thanh giằng 3 lỗ hoặc Tủ quần áo) -> Dùng động cơ toán học chính xác 100%
+    const previewSpec = calculateParametricGeometry(cadTemplate, userInputs, product.name);
+    if (isStrutBracketSpec(previewSpec) || isWardrobeSpec(previewSpec)) {
+      const dateStr = new Date().toLocaleDateString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+      });
+      const codeStr = `CAD-${randomUUID().slice(0, 6).toUpperCase()}`;
+
+      const svgContent = renderSvg(previewSpec, { date: dateStr, code: codeStr });
+      const dxfContent = renderDxf(previewSpec);
+
+      const dir = path.join(process.cwd(), "public", "ai-previews");
+      await mkdir(dir, { recursive: true });
+
+      const fileId = randomUUID();
+      const svgFileName = `cad-${fileId}.svg`;
+      const dxfFileName = `cad-${fileId}.dxf`;
+
+      await writeFile(path.join(dir, svgFileName), svgContent, "utf8");
+      await writeFile(path.join(dir, dxfFileName), dxfContent, "utf8");
+
+      return {
+        success: true,
+        cadSpec: previewSpec,
+        svgUrl: `/ai-previews/${svgFileName}`,
+        dxfUrl: `/ai-previews/${dxfFileName}`,
+        modifiedParams: {
+          length: userInputs.length,
+          width: userInputs.width,
+          height: userInputs.height,
+          thickness: userInputs.thickness,
+          notes: userInputs.notes || "",
+        },
+        provider: "Động cơ cơ học chính xác CNC (Parametric Solid Math · Chuẩn 95%)",
+        message: `Đã tính toán tham số CAD thành công theo khuôn mẫu: ${product.name}`,
+      };
     }
 
     // 2. Viết System Prompt ép buộc AI hoạt động như máy tính toán CAD toán học

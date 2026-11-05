@@ -6,6 +6,55 @@ export { DEFAULT_CATEGORIES };
 
 export const INITIAL_PRODUCTS: Omit<ProductItem, "id">[] = [
   {
+    name: "Ke đỡ kệ chữ L thanh giằng 3 lỗ chịu lực CNC",
+    category: "Pát đỡ & Chi tiết máy",
+    description:
+      "Ke đỡ kệ chữ L chịu lực cao cấp gia công từ thép dẹt SS400 dày 5.0mm chấn vuông góc 90°, hai đầu mút bo tròn bán nguyệt R20mm thẩm mỹ. Kết hợp thanh giằng chéo bản 32×5mm đột 3 lỗ tròn Ø18mm cách đều dọc trục nghiêng 37.6°, liên kết mộng chữ nhật 14×5mm xuyên qua cánh ngang và hàn TIG âm phẳng. Cánh đứng khoan 2 lỗ vít âm côn Ø6.5/Ø12×90° bắt phẳng mặt tường, sơn tĩnh điện đen mờ chống rỉ.",
+    dimensions: "250 × 40 × 200 mm",
+    material: "Thép kết cấu SS400 dày 5.0mm sơn tĩnh điện đen mờ",
+    price: 165000,
+    imageUrl: "/products/ke-chu-l-thanh-giang-3-lo.jpg",
+    cadImageUrl: "/products/ke-chu-l-thanh-giang-cad.svg",
+    baseAiContext:
+      "Ke đỡ kệ chữ L chịu lực có thanh giằng chéo đục 3 lỗ tròn bằng nhau (Perforated Diagonal Brace L-Bracket). Kích thước gốc: Chiều dài cánh ngang L=250mm, Bản rộng W=40mm (bo tròn 2 đầu bán nguyệt R=W/2=20mm), Chiều cao cánh đứng H=200mm, Độ dày thép T=5.0mm. Thanh giằng chéo bản 32x5mm nối từ mặt trong cánh đứng (cách đỉnh 0.66H) lên mặt dưới cánh ngang (cách lưng 0.68L) có đầu mộng chữ nhật 14x5mm xuyên qua cánh ngang, trên thanh giằng đột 3 lỗ tròn Ø18mm thẳng hàng cách đều. Cánh đứng có 2 lỗ vít âm côn Ø6.5/Ø12x90°, cánh ngang có 2 lỗ vít Ø6mm.",
+    cadTemplate: {
+      title: "Ke đỡ kệ chữ L thanh giằng 3 lỗ chịu lực CNC",
+      cadImageUrl: "/products/ke-chu-l-thanh-giang-cad.svg",
+      baseDimensions: { length: 250, width: 40, height: 200, thickness: 5 },
+      material: "Thép kết cấu SS400 dày 5.0mm cắt Laser & Chấn CNC",
+      finish: "Sơn tĩnh điện đen mờ cao cấp (Matte Black Powder Coat)",
+      parts: [
+        { name: "Thân ke chữ L cánh ngang (Bo đầu R20)", x: 0, y: 195, z: 0, w: 250, h: 5, d: 40 },
+        { name: "Thân ke chữ L cánh đứng (Bo đáy R20)", x: 0, y: 0, z: 0, w: 5, h: 195, d: 40 },
+        {
+          name: "Thanh giằng chéo đục 3 lỗ tròn",
+          x: 5,
+          y: 68,
+          z: 17.5,
+          w: 165,
+          h: 127,
+          d: 5,
+          shape: "triangle",
+        },
+      ],
+      holes: [
+        { x: 5, y: 158, z: 20, diameter: 6.5, axis: "x" },
+        { x: 5, y: 26, z: 20, diameter: 6.5, axis: "x" },
+        { x: 42, y: 200, z: 20, diameter: 6, axis: "y" },
+        { x: 228, y: 200, z: 20, diameter: 6, axis: "y" },
+        { x: 52, y: 104, z: 20, diameter: 18, axis: "z" },
+        { x: 88, y: 132, z: 20, diameter: 18, axis: "z" },
+        { x: 124, y: 160, z: 20, diameter: 18, axis: "z" },
+      ],
+      notes: [
+        "Cắt Laser Fiber CNC ±0.05mm, bo tròn 2 đầu bán nguyệt R = W/2",
+        "Thanh giằng chéo bản 32×5mm đột 3 lỗ tròn Ø18mm thẳng hàng cách đều",
+        "Đột lỗ mộng chữ nhật 14×5mm trên cánh ngang, lắp mộng thanh giằng & hàn TIG",
+        "Khoan 2 lỗ vít âm côn Ø6.5/Ø12×90° trên cánh đứng và 2 lỗ Ø6mm trên cánh ngang",
+      ],
+    },
+  },
+  {
     name: "Tủ quần áo 4 cánh có kệ góc đa năng CNC",
     category: "Tủ áo & Nội thất CNC",
     description: "Tủ áo kịch trần thiết kế hiện đại 2 buồng lớn kết hợp kệ góc trang trí 5 tầng bo cong mềm mại. Khung thùng gỗ MDF lõi xanh chống ẩm HMR dày 18mm phủ Melamine vân gỗ sồi, mặt cánh sơn bệt trắng chạy rãnh CNC quả trám sang trọng. Trang bị đầy đủ 2 suốt treo Inox oval phi 25mm, 4 ngăn kéo ray bi 3 tầng giảm chấn và khoang chứa chăn màn vali nóc tủ rộng rãi.",
@@ -435,7 +484,17 @@ export async function getSampleProducts(): Promise<ProductItem[]> {
       orderBy: { createdAt: "desc" },
     });
     if (list && list.length > 0) {
-      return list as unknown as ProductItem[];
+      return list.map((item) => {
+        const matched = INITIAL_PRODUCTS.find((ip) => ip.name === item.name);
+        return {
+          ...item,
+          cadImageUrl:
+            (item as any).cadImageUrl ||
+            (item.cadTemplate as any)?.cadImageUrl ||
+            matched?.cadImageUrl ||
+            null,
+        };
+      }) as unknown as ProductItem[];
     }
     return INITIAL_PRODUCTS.map((p, idx) => ({ ...p, id: `seed-${idx + 1}` })) as unknown as ProductItem[];
   } catch (err) {
@@ -470,7 +529,17 @@ export async function getProductById(id: string): Promise<ProductItem | null> {
       const product = await prisma.product.findUnique({
         where: { id },
       });
-      if (product) return product as unknown as ProductItem;
+      if (product) {
+        const matched = INITIAL_PRODUCTS.find((ip) => ip.name === product.name);
+        return {
+          ...product,
+          cadImageUrl:
+            (product as any).cadImageUrl ||
+            (product.cadTemplate as any)?.cadImageUrl ||
+            matched?.cadImageUrl ||
+            null,
+        } as unknown as ProductItem;
+      }
     } catch (err) {
       console.warn("[Products] Error fetching product by UUID from DB:", err);
     }

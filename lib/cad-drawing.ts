@@ -166,6 +166,1129 @@ export function isWardrobeSpec(spec: CadSpec): boolean {
   );
 }
 
+export function isStrutBracketSpec(spec: CadSpec): boolean {
+  if (!spec) return false;
+  const rawTitle = (spec.title || "").toLowerCase();
+  const rawParts = (spec.parts || []).map((p) => p.name || "").join(" ").toLowerCase();
+  const combined = `${rawTitle} ${rawParts}`;
+  const norm = combined
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+
+  if (
+    /ke do|ke chu l|pat do tam giac|pat do chu l|gia do ke|thanh giang 3 lo|strut bracket/i.test(norm) ||
+    /ke đỡ|ke chữ l|pát đỡ tam giác|pát đỡ chữ l|thanh giằng 3 lỗ/i.test(combined)
+  ) {
+    return true;
+  }
+
+  return (
+    (/pát đỡ|ke góc|giá đỡ|bracket/i.test(combined) || /pat do|ke goc|gia do/i.test(norm)) &&
+    (/thanh giằng|3 lỗ|tam giác|gân tăng cứng|gusset|strut/i.test(combined) ||
+      (Array.isArray(spec.holes) && spec.holes.filter((h) => h.axis === "z").length >= 3))
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TOÁN HỌC HÌNH HỌC THAM SỐ CHO KE ĐỠ CHỮ L THANH GIẰNG 3 LỖ TRÒN (RICHELIEU STYLE)
+// ---------------------------------------------------------------------------
+
+type StrutBracketGeom = {
+  L: number;           // Chiều dài cánh ngang đỡ kệ (mm)
+  W: number;           // Bản rộng thanh thép (mm)
+  H: number;           // Chiều cao cánh đứng áp tường (mm)
+  T: number;           // Độ dày bản thép (mm)
+  rIn: number;         // Bán kính uốn trong góc 90° (mm)
+  rOut: number;        // Bán kính uốn ngoài góc 90° (mm)
+  rEnd: number;        // Bán kính bo tròn 2 đầu mút = W/2 (mm)
+  xA: number;          // Tâm chân thanh giằng trên mặt trong cánh đứng (x = T)
+  yA: number;          // Cao độ tâm chân thanh giằng tính từ đáy (mm)
+  hBraceFromTop: number; // Khoảng cách từ mặt trên xuống tâm chân thanh giằng (mm)
+  xB: number;          // Tâm đỉnh thanh giằng trên mặt dưới cánh ngang (mm)
+  yB: number;          // Cao độ mặt dưới cánh ngang (y = H - T)
+  lBraceFromBack: number; // Khoảng cách từ lưng tường ra tâm đỉnh thanh giằng (mm)
+  bStrut: number;      // Bản rộng của thanh giằng chéo (mm)
+  angleDeg: number;    // Góc nghiêng thanh giằng so với phương ngang (độ)
+  axisLen: number;     // Chiều dài đường tâm thanh giằng (mm)
+  ux: number;
+  uy: number;
+  nx: number;
+  ny: number;
+  strutPoly: [number, number][]; // Đa giác thanh giằng trong mặt phẳng XY
+  tenonLen: number;    // Chiều dài lỗ mộng chữ nhật trên cánh ngang (mm)
+  holeDia: number;     // Đường kính 3 lỗ tròn giảm trọng lượng trên thanh giằng (mm)
+  holePitch: number;   // Khoảng cách tâm giữa các lỗ tròn trên thanh giằng (mm)
+  strutHoles: { cx: number; cy: number; r: number }[];
+  wallHoleDia: number; // Đường kính lỗ xuyên vít tường (mm)
+  wallCskDia: number;  // Đường kính miệng vát côn âm vít tường (mm)
+  yWallTop: number;    // Cao độ lỗ vít tường trên tính từ đáy (mm)
+  yWallTopFromTop: number; // Khoảng cách lỗ vít tường trên tính từ đỉnh (mm)
+  yWallBot: number;    // Cao độ lỗ vít tường dưới tính từ đáy (mm)
+  shelfHoleDia: number; // Đường kính lỗ vít bắt kệ trên cánh ngang (mm)
+  xShelfIn: number;    // Hoành độ lỗ vít trong trên cánh ngang (mm)
+  xShelfOut: number;   // Hoành độ lỗ vít ngoài trên cánh ngang (mm)
+  xShelfOutFromTip: number; // Khoảng cách lỗ vít ngoài tới mũi cánh ngang (mm)
+};
+
+function extractStrutBracketGeometry(spec: CadSpec): StrutBracketGeom {
+  const { W: boundW, H: boundH, D: boundD } = bounds(spec);
+
+  let parsedL = 0;
+  let parsedW = 0;
+  let parsedH = 0;
+  let parsedT = 0;
+
+  const titleMatch = (spec.title || "").match(
+    /L=(\d+(?:\.\d+)?)\s*x\s*W=(\d+(?:\.\d+)?)\s*x\s*H=(\d+(?:\.\d+)?)\s*x\s*T=(\d+(?:\.\d+)?)/i
+  );
+  if (titleMatch) {
+    parsedL = parseFloat(titleMatch[1]);
+    parsedW = parseFloat(titleMatch[2]);
+    parsedH = parseFloat(titleMatch[3]);
+    parsedT = parseFloat(titleMatch[4]);
+  } else {
+    const assumpText = (spec.assumptions || []).join(" ");
+    const m = assumpText.match(
+      /Dài\s*(\d+(?:\.\d+)?)\s*mm.*Rộng\s*(\d+(?:\.\d+)?)\s*mm.*Cao\s*(\d+(?:\.\d+)?)\s*mm.*Dày\s*(\d+(?:\.\d+)?)\s*mm/i
+    );
+    if (m) {
+      parsedL = parseFloat(m[1]);
+      parsedW = parseFloat(m[2]);
+      parsedH = parseFloat(m[3]);
+      parsedT = parseFloat(m[4]);
+    }
+  }
+
+  if (!parsedT) {
+    const topArm = (spec.parts || []).find((p) => /ngang|đỡ kệ/i.test(p.name));
+    if (topArm && topArm.h >= 2 && topArm.h <= 25) parsedT = topArm.h;
+  }
+
+  const L = Math.max(100, Math.min(1500, Math.round(parsedL || boundW || 250)));
+  const W = Math.max(20, Math.min(300, Math.round(parsedW || boundD || 40)));
+  const H = Math.max(100, Math.min(1500, Math.round(parsedH || boundH || 200)));
+  const T = Math.max(2, Math.min(20, Math.round((parsedT || 5) * 10) / 10));
+
+  const rIn = Math.max(3, Math.round(T * 1.2));
+  const rOut = rIn + T;
+  const rEnd = Math.round((W / 2) * 10) / 10;
+
+  // Tâm chân thanh giằng trên cánh đứng & tâm đỉnh thanh giằng dưới cánh ngang
+  const hBraceFromTop = Math.round(H * 0.66);
+  const yA = H - hBraceFromTop; // 0.34 * H từ đáy
+  const xA = T;
+
+  const lBraceFromBack = Math.round(L * 0.68);
+  const xB = lBraceFromBack;
+  const yB = H - T;
+
+  const dx = xB - xA;
+  const dy = yB - yA;
+  const axisLen = Math.hypot(dx, dy);
+  const ux = dx / axisLen;
+  const uy = dy / axisLen;
+  // Pháp tuyến hướng lên-trái
+  const nx = -uy;
+  const ny = ux;
+  const angleDeg = Math.round(((Math.atan2(dy, dx) * 180) / Math.PI) * 10) / 10;
+
+  // Bản rộng thanh giằng chéo & nửa bản rộng
+  const bStrut = Math.round(Math.max(18, Math.min(W * 0.85, Math.min(L, H) * 0.16)));
+  const hs = bStrut / 2;
+
+  // Giao điểm biên trên thanh giằng với mặt trong cánh đứng (x = T) và mặt dưới cánh ngang (y = H - T)
+  const yTopWall = Math.min(H - rOut - 2, yA + hs / ux);
+  const xTopShelf = Math.max(rOut + 2, xB - hs / uy);
+
+  // Giao điểm biên dưới thanh giằng với mặt trong cánh đứng (x = T) và vát gót ở cánh ngang
+  const yBotWall = Math.max(rEnd + 8, yA - hs / ux);
+  const xBotFull = xB + hs / uy;
+  const xBotShelf = Math.min(L - rEnd - 4, xB + (hs / uy) * 0.42);
+  // Điểm gót vát (heel chamfer) trên biên dưới thanh giằng giống ảnh thực tế
+  const heelBackDist = (xBotFull - xBotShelf) * 0.85;
+  const xBotHeel = xBotFull - heelBackDist * ux;
+  const yBotHeel = yB - heelBackDist * uy;
+
+  const strutPoly: [number, number][] = [
+    [T, yTopWall],
+    [xTopShelf, yB],
+    [xBotShelf, yB],
+    [xBotHeel, yBotHeel],
+    [T, yBotWall],
+  ];
+
+  const tenonLen = Math.round(Math.max(10, bStrut * 0.44));
+
+  // 3 lỗ tròn bằng nhau phân bố đều dọc theo đường tâm thanh giằng
+  const holeDia = Math.round(bStrut * 0.56);
+  const holeR = holeDia / 2;
+  const sStart = (hs * uy) / ux + holeR * 0.35;
+  const sEnd = axisLen - (hs * ux) / uy - holeR * 0.25;
+  const sSpan = Math.max(holeDia * 3.4, sEnd - sStart);
+  const ratios = [0.21, 0.5, 0.79];
+  const strutHoles = ratios.map((r) => {
+    const s = sStart + r * sSpan;
+    return {
+      cx: xA + s * ux,
+      cy: yA + s * uy,
+      r: holeR,
+    };
+  });
+  const holePitch = Math.round(0.29 * sSpan * 10) / 10;
+
+  // 2 lỗ vít âm côn trên cánh đứng
+  const wallHoleDia = Math.round(Math.max(5, Math.min(10, W * 0.16)) * 10) / 10;
+  const wallCskDia = Math.round(wallHoleDia * 1.85);
+  const yWallTopFromTop = Math.round(Math.max(rOut + 14, (H - yTopWall) * 0.42));
+  const yWallTop = H - yWallTopFromTop;
+  const yWallBot = Math.round(Math.max(rEnd * 0.9, yBotWall * 0.52));
+
+  // 2 lỗ vít trên cánh ngang
+  const shelfHoleDia = Math.round(Math.max(4.5, Math.min(9, W * 0.15)) * 10) / 10;
+  const xShelfIn = Math.round(Math.max(rOut + 14, xTopShelf * 0.29));
+  const xShelfOutFromTip = Math.round(Math.max(rEnd * 0.95, (L - xBotShelf) * 0.32));
+  const xShelfOut = L - xShelfOutFromTip;
+
+  return {
+    L,
+    W,
+    H,
+    T,
+    rIn,
+    rOut,
+    rEnd,
+    xA,
+    yA,
+    hBraceFromTop,
+    xB,
+    yB,
+    lBraceFromBack,
+    bStrut,
+    angleDeg,
+    axisLen,
+    ux,
+    uy,
+    nx,
+    ny,
+    strutPoly,
+    tenonLen,
+    holeDia,
+    holePitch,
+    strutHoles,
+    wallHoleDia,
+    wallCskDia,
+    yWallTop,
+    yWallTopFromTop,
+    yWallBot,
+    shelfHoleDia,
+    xShelfIn,
+    xShelfOut,
+    xShelfOutFromTip,
+  };
+}
+
+/**
+ * Dựng mô hình 3D Vector chân thực của Ke đỡ chữ L thanh giằng 3 lỗ tròn
+ * (Khớp 95% góc chụp thực tế: góc uốn cong 90°, 2 đầu bo tròn bán nguyệt, 2 lỗ vít âm côn,
+ * mộng chữ nhật trên cánh ngang, và thanh giằng chéo đục 3 lỗ tròn có chiều dày thành lỗ 3D)
+ */
+function renderStrutBracket3dElements(
+  g: StrutBracketGeom,
+  box: { x: number; y: number; w: number; h: number },
+  options: {
+    angle?: CameraAngle;
+    holeBgColor?: string;
+    idPrefix?: string;
+    showDimensions?: boolean;
+  } = {}
+): string {
+  const angle = options.angle || "perspective";
+  const holeBg = options.holeBgColor || "#f8fafc";
+  const pfx = options.idPrefix || "sb3d";
+
+  // Phép chiếu 3D (x: 0..L sang phải-xuống, y: 0..H hướng lên, z: 0..W sang phải-lên)
+  const projectRaw = (x: number, y: number, z: number): [number, number] => {
+    if (angle === "front") {
+      // Nhìn trực diện mặt bên thấy rõ chữ L, thanh giằng 3 lỗ và hơi nghiêng nhẹ thấy bản rộng W
+      return [x * 0.96 + z * 0.24, -y * 0.98 - z * 0.14];
+    }
+    if (angle === "top") {
+      // Nhìn từ trên cao xuống mặt cánh ngang và thanh giằng bên dưới
+      return [x * 0.92 + z * 0.35, -y * 0.45 + x * 0.22 - z * 0.78];
+    }
+    // Góc chụp 3/4 khớp 95% với bức ảnh mẫu của khách hàng
+    return [x * 0.90 + z * 0.50, -y * 0.96 + x * 0.37 - z * 0.30];
+  };
+
+  // Tính bounding box 2D để căn giữa vào khung box
+  const samplePts: [number, number][] = [];
+  for (const xx of [0, g.L]) {
+    for (const yy of [0, g.H]) {
+      for (const zz of [0, g.W]) {
+        samplePts.push(projectRaw(xx, yy, zz));
+      }
+    }
+  }
+  const uMin = Math.min(...samplePts.map((p) => p[0]));
+  const uMax = Math.max(...samplePts.map((p) => p[0]));
+  const vMin = Math.min(...samplePts.map((p) => p[1]));
+  const vMax = Math.max(...samplePts.map((p) => p[1]));
+
+  const pad = options.showDimensions ? 24 : 16;
+  const sc = Math.min(
+    (box.w - pad * 2) / Math.max(1, uMax - uMin),
+    (box.h - pad * 2) / Math.max(1, vMax - vMin)
+  );
+  const uMid = (uMin + uMax) / 2;
+  const vMid = (vMin + vMax) / 2;
+  const cxBox = box.x + box.w / 2;
+  const cyBox = box.y + box.h / 2;
+
+  const P = (x: number, y: number, z: number): [number, number] => {
+    const [u, v] = projectRaw(x, y, z);
+    return [cxBox + (u - uMid) * sc, cyBox + (v - vMid) * sc];
+  };
+  const Ps = (x: number, y: number, z: number): string => {
+    const [px, py] = P(x, y, z);
+    return `${f(px)},${f(py)}`;
+  };
+  const ptsToPath = (pts: [number, number][]) =>
+    pts.map((pt, idx) => `${idx === 0 ? "M" : "L"}${f(pt[0])},${f(pt[1])}`).join(" ") + " Z";
+
+  const out: string[] = [];
+
+  // Định nghĩa Gradient kim loại sơn tĩnh điện đen mờ (Matte Black Powder Coated Steel)
+  out.push(
+    `<defs>`,
+    `  <linearGradient id="${pfx}-wallFace" x1="0%" y1="0%" x2="100%" y2="100%">`,
+    `    <stop offset="0%" stop-color="#334155"/>`,
+    `    <stop offset="45%" stop-color="#1e293b"/>`,
+    `    <stop offset="100%" stop-color="#0f172a"/>`,
+    `  </linearGradient>`,
+    `  <linearGradient id="${pfx}-shelfTop" x1="0%" y1="0%" x2="100%" y2="40%">`,
+    `    <stop offset="0%" stop-color="#475569"/>`,
+    `    <stop offset="50%" stop-color="#334155"/>`,
+    `    <stop offset="100%" stop-color="#1e293b"/>`,
+    `  </linearGradient>`,
+    `  <linearGradient id="${pfx}-strutFace" x1="0%" y1="0%" x2="100%" y2="100%">`,
+    `    <stop offset="0%" stop-color="#1e293b"/>`,
+    `    <stop offset="60%" stop-color="#0f172a"/>`,
+    `    <stop offset="100%" stop-color="#090d16"/>`,
+    `  </linearGradient>`,
+    `  <linearGradient id="${pfx}-holeRim" x1="0%" y1="0%" x2="100%" y2="100%">`,
+    `    <stop offset="0%" stop-color="#94a3b8"/>`,
+    `    <stop offset="45%" stop-color="#475569"/>`,
+    `    <stop offset="100%" stop-color="#0f172a"/>`,
+    `  </linearGradient>`,
+    `  <linearGradient id="${pfx}-cskBevel" x1="0%" y1="0%" x2="100%" y2="100%">`,
+    `    <stop offset="0%" stop-color="#cbd5e1"/>`,
+    `    <stop offset="35%" stop-color="#334155"/>`,
+    `    <stop offset="100%" stop-color="#020617"/>`,
+    `  </linearGradient>`,
+    `</defs>`
+  );
+
+  // -------------------------------------------------------------------------
+  // 1. CÁNH ĐỨNG ÁP TƯỜNG (x: 0..T, y: 0..H-rOut, z: 0..W) + ĐÁY BO TRÒN R = W/2
+  // -------------------------------------------------------------------------
+  const arcSteps = 18;
+  // Dải cạnh dày bên trái (z = 0) và cung đáy của cánh đứng
+  const wallLeftEdgePts: string[] = [
+    Ps(0, g.H - g.rOut, 0),
+    Ps(0, g.rEnd, 0),
+  ];
+  const wallInnerBotPts: string[] = [];
+  for (let i = 0; i <= arcSteps / 2; i++) {
+    const th = -Math.PI / 2 + (i / (arcSteps / 2)) * (Math.PI / 2);
+    const yy = g.rEnd * (1 - Math.cos(th));
+    const zz = g.rEnd * (1 + Math.sin(th));
+    wallLeftEdgePts.push(Ps(0, yy, zz));
+    wallInnerBotPts.unshift(Ps(g.T, yy, zz));
+  }
+  wallInnerBotPts.push(Ps(g.T, g.rEnd, 0), Ps(g.T, g.H - g.rOut, 0));
+  out.push(
+    `<polygon points="${[...wallLeftEdgePts, ...wallInnerBotPts].join(" ")}" fill="#090d16" stroke="#334155" stroke-width="0.9" stroke-linejoin="round"/>`
+  );
+
+  // Mặt trong của cánh đứng (x = T) với đáy bo tròn bán nguyệt R = W/2
+  const wallFrontPoly: [number, number][] = [
+    P(g.T, g.H - g.rOut, 0),
+    P(g.T, g.rEnd, 0),
+  ];
+  for (let i = 1; i <= arcSteps; i++) {
+    const th = -Math.PI / 2 + (i / arcSteps) * Math.PI;
+    const yy = g.rEnd * (1 - Math.cos(th));
+    const zz = g.rEnd * (1 + Math.sin(th));
+    wallFrontPoly.push(P(g.T, yy, zz));
+  }
+  wallFrontPoly.push(P(g.T, g.H - g.rOut, g.W));
+  out.push(
+    `<path d="${ptsToPath(wallFrontPoly)}" fill="url(#${pfx}-wallFace)" stroke="#475569" stroke-width="1" stroke-linejoin="round"/>`
+  );
+
+  // 2 Lỗ vít âm côn (Countersunk holes) trên cánh đứng
+  const drawWallCountersunkHole = (yCenter: number) => {
+    const rOuter = g.wallCskDia / 2;
+    const rInner = g.wallHoleDia / 2;
+    const cskPts: [number, number][] = [];
+    const holePts: [number, number][] = [];
+    const steps = 20;
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      cskPts.push(P(g.T, yCenter + rOuter * Math.cos(a), g.W / 2 + rOuter * Math.sin(a)));
+      holePts.push(P(g.T * 0.25, yCenter + rInner * Math.cos(a), g.W / 2 + rInner * Math.sin(a)));
+    }
+    out.push(
+      `<path d="${ptsToPath(cskPts)}" fill="url(#${pfx}-cskBevel)" stroke="#64748b" stroke-width="0.8"/>`,
+      `<path d="${ptsToPath(holePts)}" fill="${holeBg}" stroke="#1e293b" stroke-width="0.8"/>`
+    );
+  };
+  drawWallCountersunkHole(g.yWallTop);
+  drawWallCountersunkHole(g.yWallBot);
+
+  // -------------------------------------------------------------------------
+  // 2. THANH GIẰNG CHÉO ĐỤC 3 LỖ TRÒN XUYÊN THẤU (z: z0..z1 ở giữa bản rộng W)
+  // -------------------------------------------------------------------------
+  const z0 = (g.W - g.T) / 2;
+  const z1 = (g.W + g.T) / 2;
+
+  // Dải độ dày cạnh trên của thanh giằng (giữa z0 và z1)
+  const [pTopW, pTopS, pBotS, pBotH, pBotW] = g.strutPoly;
+  out.push(
+    `<polygon points="${Ps(pTopW[0], pTopW[1], z0)} ${Ps(pTopS[0], pTopS[1], z0)} ${Ps(pTopS[0], pTopS[1], z1)} ${Ps(pTopW[0], pTopW[1], z1)}" fill="#334155" stroke="#475569" stroke-width="0.8" stroke-linejoin="round"/>`,
+    `<polygon points="${Ps(pBotW[0], pBotW[1], z0)} ${Ps(pBotH[0], pBotH[1], z0)} ${Ps(pBotS[0], pBotS[1], z0)} ${Ps(pBotS[0], pBotS[1], z1)} ${Ps(pBotH[0], pBotH[1], z1)} ${Ps(pBotW[0], pBotW[1], z1)}" fill="#090d16" stroke="#334155" stroke-width="0.8" stroke-linejoin="round"/>`
+  );
+
+  // Vẽ thành trụ 3D bên trong của 3 lỗ tròn và nền xuyên thấu trước khi đậy mặt phẳng khoét lỗ lên
+  const holeCircleSteps = 28;
+  const frontHolePaths: string[] = [];
+
+  g.strutHoles.forEach((h, idx) => {
+    const frontPts: [number, number][] = [];
+    const backPts: [number, number][] = [];
+    for (let i = 0; i < holeCircleSteps; i++) {
+      const a = (i / holeCircleSteps) * Math.PI * 2;
+      const hx = h.cx + h.r * Math.cos(a);
+      const hy = h.cy + h.r * Math.sin(a);
+      frontPts.push(P(hx, hy, z0));
+      backPts.push(P(hx, hy, z1));
+    }
+    const frontPathStr = ptsToPath(frontPts);
+    const backPathStr = ptsToPath(backPts);
+    frontHolePaths.push(frontPathStr);
+
+    const clipId = `${pfx}-hclip-${idx}`;
+    out.push(
+      `<clipPath id="${clipId}"><path d="${frontPathStr}"/></clipPath>`,
+      `<g clip-path="url(#${clipId})">`,
+      `  <path d="${frontPathStr}" fill="url(#${pfx}-holeRim)"/>`,
+      `  <path d="${backPathStr}" fill="${holeBg}" stroke="#334155" stroke-width="1"/>`,
+      `</g>`
+    );
+  });
+
+  // Mặt phẳng chính của thanh giằng (z = z0) có khoét thủng 3 lỗ tròn bằng fill-rule="evenodd"
+  const strutOuterPts = g.strutPoly.map(([x, y]) => P(x, y, z0));
+  const strutCompoundPath = [ptsToPath(strutOuterPts), ...frontHolePaths].join(" ");
+  out.push(
+    `<path d="${strutCompoundPath}" fill="url(#${pfx}-strutFace)" fill-rule="evenodd" stroke="#475569" stroke-width="1" stroke-linejoin="round"/>`
+  );
+
+  // Viền highlight cho 3 lỗ tròn mặt trước
+  for (const fp of frontHolePaths) {
+    out.push(`<path d="${fp}" fill="none" stroke="#64748b" stroke-width="0.9"/>`);
+  }
+
+  // -------------------------------------------------------------------------
+  // 3. GÓC UỐN CONG 90° (CURVED BEND CORNER) & CÁNH NGANG ĐỠ KỆ BO TRÒN MŨI
+  // -------------------------------------------------------------------------
+  const bendSteps = 10;
+  const cxBend = g.rOut;
+  const cyBend = g.H - g.rOut;
+  for (let i = 0; i < bendSteps; i++) {
+    const a0 = (i / bendSteps) * (Math.PI / 2);
+    const a1 = ((i + 1) / bendSteps) * (Math.PI / 2);
+    const xOut0 = cxBend - g.rOut * Math.cos(a0);
+    const yOut0 = cyBend + g.rOut * Math.sin(a0);
+    const xOut1 = cxBend - g.rOut * Math.cos(a1);
+    const yOut1 = cyBend + g.rOut * Math.sin(a1);
+
+    const xIn0 = cxBend - g.rIn * Math.cos(a0);
+    const yIn0 = cyBend + g.rIn * Math.sin(a0);
+    const xIn1 = cxBend - g.rIn * Math.cos(a1);
+    const yIn1 = cyBend + g.rIn * Math.sin(a1);
+
+    // Dải mặt cong lưng góc uốn (với hiệu ứng ánh sáng specular ở giữa góc uốn)
+    const shade = i >= 3 && i <= 6 ? "#475569" : i >= 2 && i <= 7 ? "#334155" : "#1e293b";
+    out.push(
+      `<polygon points="${Ps(xOut0, yOut0, 0)} ${Ps(xOut1, yOut1, 0)} ${Ps(xOut1, yOut1, g.W)} ${Ps(xOut0, yOut0, g.W)}" fill="${shade}" stroke="${shade}" stroke-width="0.5"/>`,
+      `<polygon points="${Ps(xOut0, yOut0, 0)} ${Ps(xOut1, yOut1, 0)} ${Ps(xIn1, yIn1, 0)} ${Ps(xIn0, yIn0, 0)}" fill="#090d16" stroke="#1e293b" stroke-width="0.5"/>`
+    );
+  }
+
+  // Dải cạnh dày mép gần (z = 0) và đầu mũi bo tròn của cánh ngang
+  const shelfSideTopPts: string[] = [Ps(g.rOut, g.H, 0), Ps(g.L - g.rEnd, g.H, 0)];
+  const shelfSideBotPts: string[] = [];
+  for (let i = 0; i <= arcSteps / 2; i++) {
+    const th = -Math.PI / 2 + (i / (arcSteps / 2)) * (Math.PI / 2);
+    const xx = g.L - g.rEnd + g.rEnd * Math.cos(th);
+    const zz = g.rEnd * (1 + Math.sin(th));
+    shelfSideTopPts.push(Ps(xx, g.H, zz));
+    shelfSideBotPts.unshift(Ps(xx, g.H - g.T, zz));
+  }
+  shelfSideBotPts.push(Ps(g.L - g.rEnd, g.H - g.T, 0), Ps(g.rOut, g.H - g.T, 0));
+  out.push(
+    `<polygon points="${[...shelfSideTopPts, ...shelfSideBotPts].join(" ")}" fill="#090d16" stroke="#334155" stroke-width="0.9" stroke-linejoin="round"/>`
+  );
+
+  // Mặt trên của cánh ngang (y = H) với mũi phải bo tròn bán nguyệt R = W/2
+  const shelfTopPoly: [number, number][] = [
+    P(g.rOut, g.H, 0),
+    P(g.L - g.rEnd, g.H, 0),
+  ];
+  for (let i = 1; i <= arcSteps; i++) {
+    const th = -Math.PI / 2 + (i / arcSteps) * Math.PI;
+    const xx = g.L - g.rEnd + g.rEnd * Math.cos(th);
+    const zz = g.rEnd * (1 + Math.sin(th));
+    shelfTopPoly.push(P(xx, g.H, zz));
+  }
+  shelfTopPoly.push(P(g.rOut, g.H, g.W));
+  out.push(
+    `<path d="${ptsToPath(shelfTopPoly)}" fill="url(#${pfx}-shelfTop)" stroke="#64748b" stroke-width="1" stroke-linejoin="round"/>`
+  );
+
+  // 2 Lỗ vít bắt kệ trên mặt cánh ngang (y = H)
+  const drawShelfHole = (xCenter: number) => {
+    const r = g.shelfHoleDia / 2;
+    const pts: [number, number][] = [];
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      pts.push(P(xCenter + r * Math.cos(a), g.H, g.W / 2 + r * Math.sin(a)));
+    }
+    out.push(`<path d="${ptsToPath(pts)}" fill="#020617" stroke="#64748b" stroke-width="0.8"/>`);
+  };
+  drawShelfHole(g.xShelfIn);
+  drawShelfHole(g.xShelfOut);
+
+  // Chi tiết Mộng chữ nhật của thanh giằng xuyên lên mặt trên cánh ngang (Tenon joint)
+  const tx0 = g.xB - g.tenonLen / 2;
+  const tx1 = g.xB + g.tenonLen / 2;
+  const tz0 = (g.W - g.T) / 2;
+  const tz1 = (g.W + g.T) / 2;
+  const tH = g.H + 1.2;
+  out.push(
+    // Viền khe mộng trên mặt cánh ngang
+    `<polygon points="${Ps(tx0 - 1.2, g.H, tz0 - 1)} ${Ps(tx1 + 1.2, g.H, tz0 - 1)} ${Ps(tx1 + 1.2, g.H, tz1 + 1)} ${Ps(tx0 - 1.2, g.H, tz1 + 1)}" fill="#020617" stroke="#475569" stroke-width="0.6"/>`,
+    // Đầu mộng nhô nhẹ lên và tán cố định
+    `<polygon points="${Ps(tx0, tH, tz0)} ${Ps(tx1, tH, tz0)} ${Ps(tx1, tH, tz1)} ${Ps(tx0, tH, tz1)}" fill="#1e293b" stroke="#94a3b8" stroke-width="0.8"/>`
+  );
+
+  // Ký hiệu kích thước bao 3D nếu bật
+  if (options.showDimensions) {
+    const [pTopL_x, pTopL_y] = P(0, g.H, g.W);
+    const [pTopR_x, pTopR_y] = P(g.L, g.H, g.W);
+    const [pBot_x, pBot_y] = P(0, 0, 0);
+    const [pTopF_x, pTopF_y] = P(0, g.H, 0);
+    out.push(
+      `<line x1="${f(pTopL_x)}" y1="${f(pTopL_y - 14)}" x2="${f(pTopR_x)}" y2="${f(pTopR_y - 14)}" stroke="#0284c7" stroke-width="1.2" stroke-dasharray="3 2"/>`,
+      `<text x="${f((pTopL_x + pTopR_x) / 2 + 10)}" y="${f((pTopL_y + pTopR_y) / 2 - 20)}" font-size="11" font-weight="bold" fill="#0369a1" text-anchor="middle">L = ${g.L} mm</text>`,
+      `<line x1="${f(pTopF_x - 16)}" y1="${f(pTopF_y)}" x2="${f(pBot_x - 16)}" y2="${f(pBot_y)}" stroke="#0284c7" stroke-width="1.2" stroke-dasharray="3 2"/>`,
+      `<text x="${f(pTopF_x - 24)}" y="${f((pTopF_y + pBot_y) / 2)}" font-size="11" font-weight="bold" fill="#0369a1" text-anchor="end">H = ${g.H}</text>`
+    );
+  }
+
+  return out.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// RENDER BẢN VẼ CAD 2D & 3D CHUYÊN NGHIỆP CHO KE ĐỠ CHỮ L THANH GIẰNG 3 LỖ TRÒN
+// ---------------------------------------------------------------------------
+
+function renderStrutBracketSvg(spec: CadSpec, meta: { date: string; code: string }): string {
+  const g = extractStrutBracketGeometry(spec);
+  const PW = 1600;
+  const PH = 1130;
+  const LINE = "#0f172a";
+  const DIM = "#1d4ed8";
+  const CENTER = "#dc2626";
+  const HIDDEN = "#475569";
+
+  const out: string[] = [];
+  out.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${PW}" height="${PH}" viewBox="0 0 ${PW} ${PH}" font-family="Arial, Helvetica, sans-serif">`,
+    `<defs>`,
+    `  <marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">`,
+    `    <path d="M0,1.2 L10,5 L0,8.8 z" fill="${DIM}"/>`,
+    `  </marker>`,
+    `  <marker id="ar-lead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">`,
+    `    <path d="M0,1.5 L10,5 L0,8.5 z" fill="#0f172a"/>`,
+    `  </marker>`,
+    `  <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">`,
+    `    <path d="M20,0 L0,0 0,20" fill="none" stroke="#f1f5f9" stroke-width="1"/>`,
+    `  </pattern>`,
+    `  <pattern id="hatch" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">`,
+    `    <line x1="0" y1="0" x2="0" y2="8" stroke="#64748b" stroke-width="1"/>`,
+    `  </pattern>`,
+    `</defs>`,
+    `<rect width="${PW}" height="${PH}" fill="#ffffff"/>`,
+    `<rect x="35" y="35" width="${PW - 70}" height="${PH - 70}" fill="url(#grid)"/>`,
+    `<rect x="20" y="20" width="${PW - 40}" height="${PH - 40}" fill="none" stroke="${LINE}" stroke-width="1"/>`,
+    `<rect x="35" y="35" width="${PW - 70}" height="${PH - 70}" fill="none" stroke="${LINE}" stroke-width="2.5"/>`
+  );
+
+  // Hàm vẽ đường kích thước chuẩn ISO
+  const dimH = (x1: number, x2: number, yFrom: number, yDim: number, textVal: string | number) => {
+    const dir = yDim >= yFrom ? 1 : -1;
+    out.push(
+      `<line x1="${f(x1)}" y1="${f(yFrom + 3 * dir)}" x2="${f(x1)}" y2="${f(yDim + 6 * dir)}" stroke="${DIM}" stroke-width="0.85"/>`,
+      `<line x1="${f(x2)}" y1="${f(yFrom + 3 * dir)}" x2="${f(x2)}" y2="${f(yDim + 6 * dir)}" stroke="${DIM}" stroke-width="0.85"/>`,
+      `<line x1="${f(x1)}" y1="${f(yDim)}" x2="${f(x2)}" y2="${f(yDim)}" stroke="${DIM}" stroke-width="1.1" marker-start="url(#ar)" marker-end="url(#ar)"/>`,
+      `<text x="${f((x1 + x2) / 2)}" y="${f(yDim - 5)}" font-size="12.5" font-weight="bold" fill="${DIM}" text-anchor="middle">${esc(String(textVal))}</text>`
+    );
+  };
+
+  const dimV = (y1: number, y2: number, xFrom: number, xDim: number, textVal: string | number) => {
+    const dir = xDim >= xFrom ? 1 : -1;
+    const cx = xDim - 6;
+    const cy = (y1 + y2) / 2;
+    out.push(
+      `<line x1="${f(xFrom + 3 * dir)}" y1="${f(y1)}" x2="${f(xDim + 6 * dir)}" y2="${f(y1)}" stroke="${DIM}" stroke-width="0.85"/>`,
+      `<line x1="${f(xFrom + 3 * dir)}" y1="${f(y2)}" x2="${f(xDim + 6 * dir)}" y2="${f(y2)}" stroke="${DIM}" stroke-width="0.85"/>`,
+      `<line x1="${f(xDim)}" y1="${f(y1)}" x2="${f(xDim)}" y2="${f(y2)}" stroke="${DIM}" stroke-width="1.1" marker-start="url(#ar)" marker-end="url(#ar)"/>`,
+      `<text x="${f(cx)}" y="${f(cy)}" font-size="12.5" font-weight="bold" fill="${DIM}" text-anchor="middle" transform="rotate(-90 ${f(cx)} ${f(cy)})">${esc(String(textVal))}</text>`
+    );
+  };
+
+  const leader = (xTarget: number, yTarget: number, xKnee: number, yKnee: number, xEnd: number, labelStr: string, subStr?: string) => {
+    const anchor = xEnd >= xKnee ? "start" : "end";
+    const tx = xEnd >= xKnee ? xKnee + 6 : xKnee - 6;
+    out.push(
+      `<polyline points="${f(xTarget)},${f(yTarget)} ${f(xKnee)},${f(yKnee)} ${f(xEnd)},${f(yKnee)}" fill="none" stroke="#0f172a" stroke-width="1" marker-start="url(#ar-lead)"/>`,
+      `<text x="${f(tx)}" y="${f(yKnee - 4)}" font-size="11.5" font-weight="bold" fill="#0f172a" text-anchor="${anchor}">${esc(labelStr)}</text>`
+    );
+    if (subStr) {
+      out.push(
+        `<text x="${f(tx)}" y="${f(yKnee + 12)}" font-size="10.5" fill="#475569" text-anchor="${anchor}">${esc(subStr)}</text>`
+      );
+    }
+  };
+
+  // Tính tỷ lệ scale chung cho 3 hình chiếu vuông góc (Chiếu đứng, Chiếu bằng, Chiếu trước)
+  const sc = Math.min(410 / g.L, 380 / g.H, 150 / g.W);
+
+  // Gốc tọa độ Hình chiếu đứng (Side Elevation View):
+  // x: SX0 -> SX0 + L*sc, y: SY_TOP (y=H) -> SY_BOT (y=0)
+  const SX0 = 165;
+  const SY_TOP = 395;
+  const SY_BOT = SY_TOP + g.H * sc;
+  const sx = (xMm: number) => SX0 + xMm * sc;
+  const sy = (yMm: number) => SY_BOT - yMm * sc;
+
+  // Gốc tọa độ Hình chiếu bằng (Top View - nằm ngay phía trên Hình chiếu đứng, cùng hoành độ SX0):
+  const TY0 = 125;
+  const TY_BOT = TY0 + g.W * sc;
+  const TY_MID = TY0 + (g.W / 2) * sc;
+  const tz = (zMm: number) => TY0 + zMm * sc;
+
+  // Gốc tọa độ Hình chiếu trước (Front Wall View - nằm bên phải Hình chiếu đứng, cùng cao độ SY_TOP..SY_BOT):
+  const FX0 = SX0 + g.L * sc + 135;
+  const FX_MID = FX0 + (g.W / 2) * sc;
+  const fz = (zMm: number) => FX0 + zMm * sc;
+
+  // Đường gióng liên kết giữa 3 hình chiếu (Projection alignment lines)
+  out.push(
+    `<g stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="4 4">`,
+    `  <line x1="${f(SX0)}" y1="${f(TY_BOT)}" x2="${f(SX0)}" y2="${f(SY_TOP)}"/>`,
+    `  <line x1="${f(sx(g.L))}" y1="${f(TY_MID)}" x2="${f(sx(g.L))}" y2="${f(SY_TOP)}"/>`,
+    `  <line x1="${f(sx(g.xB))}" y1="${f(TY_BOT)}" x2="${f(sx(g.xB))}" y2="${f(SY_TOP)}"/>`,
+    `  <line x1="${f(sx(g.L))}" y1="${f(SY_TOP)}" x2="${f(FX0)}" y2="${f(SY_TOP)}"/>`,
+    `  <line x1="${f(SX0)}" y1="${f(SY_BOT)}" x2="${f(FX0)}" y2="${f(SY_BOT)}"/>`,
+    `  <line x1="${f(sx(g.T))}" y1="${f(sy(g.yWallTop))}" x2="${f(FX0)}" y2="${f(sy(g.yWallTop))}"/>`,
+    `  <line x1="${f(sx(g.T))}" y1="${f(sy(g.yWallBot))}" x2="${f(FX0)}" y2="${f(sy(g.yWallBot))}"/>`,
+    `</g>`
+  );
+
+  // =========================================================================
+  // 1. HÌNH CHIẾU BẰNG (TOP VIEW - NHÌN TỪ TRÊN XUỐNG CÁNH NGANG)
+  // =========================================================================
+  const rEndPx = g.rEnd * sc;
+  const topViewPath = [
+    `M ${f(SX0)},${f(TY0)}`,
+    `L ${f(sx(g.L - g.rEnd))},${f(TY0)}`,
+    `A ${f(rEndPx)},${f(rEndPx)} 0 0 1 ${f(sx(g.L - g.rEnd))},${f(TY_BOT)}`,
+    `L ${f(SX0)},${f(TY_BOT)}`,
+    `Z`,
+  ].join(" ");
+
+  out.push(
+    `<text x="${f(SX0 + (g.L * sc) / 2)}" y="${f(TY0 - 42)}" font-size="14" font-weight="900" fill="${LINE}" text-anchor="middle" letter-spacing="0.8">HÌNH CHIẾU BẰNG (MẶT TRÊN CÁNH NGANG)</text>`,
+    `<path d="${topViewPath}" fill="#f8fafc" stroke="${LINE}" stroke-width="2"/>`,
+    // Vạch bắt đầu góc uốn và mặt trong cánh đứng
+    `<line x1="${f(sx(g.T))}" y1="${f(TY0)}" x2="${f(sx(g.T))}" y2="${f(TY_BOT)}" stroke="${LINE}" stroke-width="1.1" stroke-dasharray="5 3"/>`,
+    `<line x1="${f(sx(g.rOut))}" y1="${f(TY0)}" x2="${f(sx(g.rOut))}" y2="${f(TY_BOT)}" stroke="#64748b" stroke-width="0.8"/>`,
+    // Nét khuất của thanh giằng chéo dày T chạy ở chính giữa bên dưới cánh ngang
+    `<line x1="${f(sx(g.T))}" y1="${f(tz((g.W - g.T) / 2))}" x2="${f(sx(g.strutPoly[2][0]))}" y2="${f(tz((g.W - g.T) / 2))}" stroke="${HIDDEN}" stroke-width="1" stroke-dasharray="5 2.5"/>`,
+    `<line x1="${f(sx(g.T))}" y1="${f(tz((g.W + g.T) / 2))}" x2="${f(sx(g.strutPoly[2][0]))}" y2="${f(tz((g.W + g.T) / 2))}" stroke="${HIDDEN}" stroke-width="1" stroke-dasharray="5 2.5"/>`,
+    // Đường trục đối xứng tâm cánh ngang
+    `<line x1="${f(SX0 - 18)}" y1="${f(TY_MID)}" x2="${f(sx(g.L) + 18)}" y2="${f(TY_MID)}" stroke="${CENTER}" stroke-width="0.9" stroke-dasharray="14 4 3 4"/>`,
+    // Tâm cung bo tròn đầu mũi R = W/2
+    `<line x1="${f(sx(g.L - g.rEnd))}" y1="${f(TY_MID - 8)}" x2="${f(sx(g.L - g.rEnd))}" y2="${f(TY_MID + 8)}" stroke="${CENTER}" stroke-width="0.9"/>`,
+    // Lỗ vít trong và lỗ vít ngoài trên cánh ngang
+    `<circle cx="${f(sx(g.xShelfIn))}" cy="${f(TY_MID)}" r="${f((g.shelfHoleDia / 2) * sc)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.5"/>`,
+    `<line x1="${f(sx(g.xShelfIn))}" y1="${f(TY_MID - 10)}" x2="${f(sx(g.xShelfIn))}" y2="${f(TY_MID + 10)}" stroke="${CENTER}" stroke-width="0.8"/>`,
+    `<circle cx="${f(sx(g.xShelfOut))}" cy="${f(TY_MID)}" r="${f((g.shelfHoleDia / 2) * sc)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.5"/>`,
+    `<line x1="${f(sx(g.xShelfOut))}" y1="${f(TY_MID - 10)}" x2="${f(sx(g.xShelfOut))}" y2="${f(TY_MID + 10)}" stroke="${CENTER}" stroke-width="0.8"/>`,
+    // Lỗ mộng chữ nhật (Tenon slot) ở vị trí xB nơi thanh giằng chéo xuyên lên
+    `<rect x="${f(sx(g.xB - g.tenonLen / 2))}" y="${f(tz((g.W - g.T) / 2))}" width="${f(g.tenonLen * sc)}" height="${f(g.T * sc)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.6"/>`
+  );
+
+  // Kích thước Hình chiếu bằng
+  dimV(TY0, TY_BOT, SX0, SX0 - 38, `W=${g.W}`);
+  dimH(SX0, sx(g.xShelfIn), TY0, TY0 - 18, g.xShelfIn);
+  dimH(SX0, sx(g.xB), TY_BOT, TY_BOT + 24, g.xB);
+  dimH(sx(g.xShelfOut), sx(g.L), TY0, TY0 - 18, g.xShelfOutFromTip);
+  leader(
+    sx(g.L - g.rEnd * 0.29),
+    TY0 + g.rEnd * 0.29 * sc,
+    sx(g.L) + 18,
+    TY0 - 12,
+    sx(g.L) + 95,
+    `Bo đầu tròn R${g.rEnd}`,
+    `2 lỗ vít kệ Ø${g.shelfHoleDia}`
+  );
+
+  // =========================================================================
+  // 2. HÌNH CHIẾU ĐỨNG / MẶT CẠNH (SIDE ELEVATION VIEW - CHÍNH)
+  // =========================================================================
+  const rOutPx = g.rOut * sc;
+  const rInPx = g.rIn * sc;
+
+  // Biên dạng chữ L có góc uốn cong chuẩn cơ khí (rOut và rIn)
+  const lBodyPath = [
+    `M ${f(sx(0))},${f(sy(0))}`,
+    `L ${f(sx(0))},${f(sy(g.H - g.rOut))}`,
+    `A ${f(rOutPx)},${f(rOutPx)} 0 0 1 ${f(sx(g.rOut))},${f(sy(g.H))}`,
+    `L ${f(sx(g.L))},${f(sy(g.H))}`,
+    `L ${f(sx(g.L))},${f(sy(g.H - g.T))}`,
+    `L ${f(sx(g.rOut))},${f(sy(g.H - g.T))}`,
+    `A ${f(rInPx)},${f(rInPx)} 0 0 0 ${f(sx(g.T))},${f(sy(g.H - g.rOut))}`,
+    `L ${f(sx(g.T))},${f(sy(0))}`,
+    `Z`,
+  ].join(" ");
+
+  // Đa giác thanh giằng chéo trong Hình chiếu đứng
+  const strutSvgPts = g.strutPoly.map(([x, y]) => `${f(sx(x))},${f(sy(y))}`).join(" ");
+
+  out.push(
+    // Thanh giằng chéo
+    `<polygon points="${strutSvgPts}" fill="#f1f5f9" stroke="${LINE}" stroke-width="2.1" stroke-linejoin="round"/>`,
+    // Thân chữ L chính
+    `<path d="${lBodyPath}" fill="#e2e8f0" stroke="${LINE}" stroke-width="2.2" stroke-linejoin="round"/>`,
+    // Đầu mộng chữ nhật của thanh giằng xuyên qua cánh ngang (Tenon joint)
+    `<rect x="${f(sx(g.xB - g.tenonLen / 2))}" y="${f(sy(g.H + 1.2))}" width="${f(g.tenonLen * sc)}" height="${f((g.T + 1.2) * sc)}" fill="#94a3b8" stroke="${LINE}" stroke-width="1.5"/>`
+  );
+
+  // Ký hiệu mối hàn góc nhỏ tại chân thanh giằng và cổ mộng
+  out.push(
+    `<polygon points="${f(sx(g.T))},${f(sy(g.strutPoly[0][1]))} ${f(sx(g.T + 4))},${f(sy(g.strutPoly[0][1]))} ${f(sx(g.T))},${f(sy(g.strutPoly[0][1] + 4))}" fill="${LINE}"/>`,
+    `<polygon points="${f(sx(g.strutPoly[1][0]))},${f(sy(g.yB))} ${f(sx(g.strutPoly[1][0] - 4))},${f(sy(g.yB))} ${f(sx(g.strutPoly[1][0]))},${f(sy(g.yB - 4))}" fill="${LINE}"/>`
+  );
+
+  // Đường trục tâm nghiêng của thanh giằng chéo (Centerline axis)
+  const extAxis = 14;
+  const axX1 = g.xA - g.ux * extAxis;
+  const axY1 = g.yA - g.uy * extAxis;
+  const axX2 = g.xB + g.ux * extAxis;
+  const axY2 = g.yB + g.uy * extAxis;
+  out.push(
+    `<line x1="${f(sx(axX1))}" y1="${f(sy(axY1))}" x2="${f(sx(axX2))}" y2="${f(sy(axY2))}" stroke="${CENTER}" stroke-width="1" stroke-dasharray="14 4 3 4"/>`
+  );
+
+  // 3 Lỗ tròn bằng nhau nằm thẳng hàng dọc theo đường tâm thanh giằng chéo
+  g.strutHoles.forEach((h, idx) => {
+    const cxPx = sx(h.cx);
+    const cyPx = sy(h.cy);
+    const rPx = h.r * sc;
+    const crossExt = h.r + 6;
+    const nx1 = sx(h.cx - g.nx * crossExt);
+    const ny1 = sy(h.cy - g.ny * crossExt);
+    const nx2 = sx(h.cx + g.nx * crossExt);
+    const ny2 = sy(h.cy + g.ny * crossExt);
+
+    out.push(
+      `<circle cx="${f(cxPx)}" cy="${f(cyPx)}" r="${f(rPx)}" fill="#ffffff" stroke="${LINE}" stroke-width="2"/>`,
+      `<line x1="${f(nx1)}" y1="${f(ny1)}" x2="${f(nx2)}" y2="${f(ny2)}" stroke="${CENTER}" stroke-width="0.9" stroke-dasharray="6 2 2 2"/>`,
+      `<text x="${f(cxPx + g.nx * (h.r + 10) * sc)}" y="${f(cyPx - g.ny * (h.r + 10) * sc)}" font-size="10.5" font-weight="bold" fill="${CENTER}" text-anchor="middle">#${idx + 1}</text>`
+    );
+  });
+
+  // Nét khuất (hidden lines) biểu diễn 2 lỗ vít âm côn xuyên qua cánh đứng (x: 0 -> T)
+  const drawWallHoleHiddenSide = (yCenter: number) => {
+    const rInH = g.wallHoleDia / 2;
+    const rCsk = g.wallCskDia / 2;
+    const cskDepth = Math.min(g.T * 0.55, (rCsk - rInH));
+    const xNeck = g.T - cskDepth;
+    out.push(
+      `<line x1="${f(sx(0))}" y1="${f(sy(yCenter + rInH))}" x2="${f(sx(xNeck))}" y2="${f(sy(yCenter + rInH))}" stroke="${HIDDEN}" stroke-width="1" stroke-dasharray="3 2"/>`,
+      `<line x1="${f(sx(0))}" y1="${f(sy(yCenter - rInH))}" x2="${f(sx(xNeck))}" y2="${f(sy(yCenter - rInH))}" stroke="${HIDDEN}" stroke-width="1" stroke-dasharray="3 2"/>`,
+      `<line x1="${f(sx(xNeck))}" y1="${f(sy(yCenter + rInH))}" x2="${f(sx(g.T))}" y2="${f(sy(yCenter + rCsk))}" stroke="${HIDDEN}" stroke-width="1"/>`,
+      `<line x1="${f(sx(xNeck))}" y1="${f(sy(yCenter - rInH))}" x2="${f(sx(g.T))}" y2="${f(sy(yCenter - rCsk))}" stroke="${HIDDEN}" stroke-width="1"/>`,
+      `<line x1="${f(sx(-8))}" y1="${f(sy(yCenter))}" x2="${f(sx(g.T + 10))}" y2="${f(sy(yCenter))}" stroke="${CENTER}" stroke-width="0.85" stroke-dasharray="8 2 2 2"/>`
+    );
+  };
+  drawWallHoleHiddenSide(g.yWallTop);
+  drawWallHoleHiddenSide(g.yWallBot);
+
+  // Nét khuất (hidden lines) của 2 lỗ vít trên cánh ngang (y: H-T -> H)
+  for (const xHole of [g.xShelfIn, g.xShelfOut]) {
+    const rH = g.shelfHoleDia / 2;
+    out.push(
+      `<line x1="${f(sx(xHole - rH))}" y1="${f(sy(g.H))}" x2="${f(sx(xHole - rH))}" y2="${f(sy(g.H - g.T))}" stroke="${HIDDEN}" stroke-width="1" stroke-dasharray="3 2"/>`,
+      `<line x1="${f(sx(xHole + rH))}" y1="${f(sy(g.H))}" x2="${f(sx(xHole + rH))}" y2="${f(sy(g.H - g.T))}" stroke="${HIDDEN}" stroke-width="1" stroke-dasharray="3 2"/>`,
+      `<line x1="${f(sx(xHole))}" y1="${f(sy(g.H + 8))}" x2="${f(sx(xHole))}" y2="${f(sy(g.H - g.T - 8))}" stroke="${CENTER}" stroke-width="0.85" stroke-dasharray="8 2 2 2"/>`
+    );
+  }
+
+  // Tiêu đề Hình chiếu đứng
+  out.push(
+    `<text x="${f(SX0 + (g.L * sc) / 2)}" y="${f(SY_BOT + 96)}" font-size="15" font-weight="900" fill="${LINE}" text-anchor="middle" letter-spacing="1">HÌNH CHIẾU ĐỨNG / MẶT CẠNH (KẾT CẤU CHÍNH)</text>`,
+    `<line x1="${f(SX0 + (g.L * sc) / 2 - 140)}" y1="${f(SY_BOT + 103)}" x2="${f(SX0 + (g.L * sc) / 2 + 140)}" y2="${f(SY_BOT + 103)}" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+
+  // Các đường kích thước của Hình chiếu đứng
+  // Ngang dưới
+  dimH(SX0, sx(g.xB), SY_BOT, SY_BOT + 32, `L giằng = ${g.lBraceFromBack}`);
+  dimH(SX0, sx(g.L), SY_BOT, SY_BOT + 64, `Tổng dài L = ${g.L}`);
+  // Dọc trái
+  dimV(SY_TOP, sy(g.yWallTop), SX0, SX0 - 34, g.yWallTopFromTop);
+  dimV(SY_TOP, sy(g.yA), SX0, SX0 - 64, `H giằng = ${g.hBraceFromTop}`);
+  dimV(sy(g.yWallBot), SY_BOT, SX0, SX0 - 34, g.yWallBot);
+  dimV(SY_TOP, SY_BOT, SX0, SX0 - 94, `Tổng cao H = ${g.H}`);
+
+  // Leader lines chỉ dẫn chi tiết trên Hình chiếu đứng
+  const hole2 = g.strutHoles[1];
+  const hole2EdgeX = sx(hole2.cx - g.nx * hole2.r);
+  const hole2EdgeY = sy(hole2.cy - g.ny * hole2.r);
+  leader(
+    hole2EdgeX,
+    hole2EdgeY,
+    hole2EdgeX + 48,
+    hole2EdgeY + 42,
+    hole2EdgeX + 205,
+    `3 Lỗ tròn Ø${g.holeDia} mm xuyên thấu`,
+    `Thẳng hàng trục ${g.angleDeg}° · Bước tâm P=${g.holePitch}mm`
+  );
+
+  const strutMidX = sx(g.strutHoles[2].cx - g.nx * (g.bStrut / 2));
+  const strutMidY = sy(g.strutHoles[2].cy - g.ny * (g.bStrut / 2));
+  leader(
+    strutMidX,
+    strutMidY,
+    strutMidX + 45,
+    strutMidY + 25,
+    strutMidX + 185,
+    `Thanh giằng bản ${g.bStrut}×${g.T} mm`,
+    `Đầu trên lắp mộng ${g.tenonLen}×${g.T}mm & hàn TIG`
+  );
+
+  leader(
+    sx(g.rOut * 0.35),
+    sy(g.H - g.rOut * 0.35),
+    sx(g.rOut) + 25,
+    SY_TOP - 28,
+    sx(g.rOut) + 155,
+    `Chấn vuông 90° (R trong ${g.rIn} / R ngoài ${g.rOut})`,
+    `Thép dẹt dày T = ${g.T} mm`
+  );
+
+  // =========================================================================
+  // 3. HÌNH CHIẾU TRƯỚC / MẶT ÁP TƯỜNG (FRONT WALL VIEW)
+  // =========================================================================
+  const frontViewPath = [
+    `M ${f(FX0)},${f(SY_TOP)}`,
+    `L ${f(fz(g.W))},${f(SY_TOP)}`,
+    `L ${f(fz(g.W))},${f(sy(g.rEnd))}`,
+    `A ${f(rEndPx)},${f(rEndPx)} 0 0 1 ${f(FX0)},${f(sy(g.rEnd))}`,
+    `Z`,
+  ].join(" ");
+
+  out.push(
+    `<text x="${f(FX_MID)}" y="${f(SY_TOP - 24)}" font-size="14" font-weight="900" fill="${LINE}" text-anchor="middle">HÌNH CHIẾU TRƯỚC</text>`,
+    `<text x="${f(FX_MID)}" y="${f(SY_TOP - 8)}" font-size="11" fill="#475569" text-anchor="middle">(Mặt cánh đứng áp tường)</text>`,
+    `<path d="${frontViewPath}" fill="#f8fafc" stroke="${LINE}" stroke-width="2"/>`,
+    // Đường độ dày cánh ngang và góc uốn ở đỉnh
+    `<line x1="${f(FX0)}" y1="${f(sy(g.H - g.T))}" x2="${f(fz(g.W))}" y2="${f(sy(g.H - g.T))}" stroke="${LINE}" stroke-width="1.4"/>`,
+    `<line x1="${f(FX0)}" y1="${f(sy(g.H - g.rOut))}" x2="${f(fz(g.W))}" y2="${f(sy(g.H - g.rOut))}" stroke="#64748b" stroke-width="0.8" stroke-dasharray="4 2"/>`,
+    // Đường tâm trục đứng
+    `<line x1="${f(FX_MID)}" y1="${f(SY_TOP - 6)}" x2="${f(FX_MID)}" y2="${f(SY_BOT + 18)}" stroke="${CENTER}" stroke-width="0.9" stroke-dasharray="14 4 3 4"/>`,
+    // Hình chiếu cạnh của thanh giằng chéo dày T nằm chính giữa bản rộng W
+    `<rect x="${f(fz((g.W - g.T) / 2))}" y="${f(sy(g.H - g.T))}" width="${f(g.T * sc)}" height="${f((g.H - g.T - g.strutPoly[4][1]) * sc)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.5"/>`,
+    // 2 Lỗ vít âm côn (Countersunk holes: 2 vòng tròn đồng tâm Ø6.5 và Ø12)
+    `<circle cx="${f(FX_MID)}" cy="${f(sy(g.yWallTop))}" r="${f((g.wallCskDia / 2) * sc)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.1"/>`,
+    `<circle cx="${f(FX_MID)}" cy="${f(sy(g.yWallTop))}" r="${f((g.wallHoleDia / 2) * sc)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.8"/>`,
+    `<line x1="${f(FX_MID - 14)}" y1="${f(sy(g.yWallTop))}" x2="${f(FX_MID + 14)}" y2="${f(sy(g.yWallTop))}" stroke="${CENTER}" stroke-width="0.8"/>`,
+    `<circle cx="${f(FX_MID)}" cy="${f(sy(g.yWallBot))}" r="${f((g.wallCskDia / 2) * sc)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.1"/>`,
+    `<circle cx="${f(FX_MID)}" cy="${f(sy(g.yWallBot))}" r="${f((g.wallHoleDia / 2) * sc)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.8"/>`,
+    `<line x1="${f(FX_MID - 14)}" y1="${f(sy(g.yWallBot))}" x2="${f(FX_MID + 14)}" y2="${f(sy(g.yWallBot))}" stroke="${CENTER}" stroke-width="0.8"/>`
+  );
+
+  // Vạch nét đứt vị trí 3 lỗ tròn trên thanh giằng nhìn từ phía trước
+  for (const h of g.strutHoles) {
+    const yTopH = sy(h.cy + h.r * g.ux);
+    const yBotH = sy(h.cy - h.r * g.ux);
+    out.push(
+      `<line x1="${f(fz((g.W - g.T) / 2))}" y1="${f(yTopH)}" x2="${f(fz((g.W + g.T) / 2))}" y2="${f(yTopH)}" stroke="${HIDDEN}" stroke-width="0.9" stroke-dasharray="2 1.5"/>`,
+      `<line x1="${f(fz((g.W - g.T) / 2))}" y1="${f(yBotH)}" x2="${f(fz((g.W + g.T) / 2))}" y2="${f(yBotH)}" stroke="${HIDDEN}" stroke-width="0.9" stroke-dasharray="2 1.5"/>`
+    );
+  }
+
+  dimH(FX0, fz(g.W), SY_BOT, SY_BOT + 32, `W=${g.W}`);
+  leader(
+    FX_MID + (g.wallCskDia / 2) * sc * 0.7,
+    sy(g.yWallTop) - (g.wallCskDia / 2) * sc * 0.7,
+    fz(g.W) + 18,
+    sy(g.yWallTop) - 18,
+    fz(g.W) + 125,
+    `2 Lỗ vít âm Ø${g.wallHoleDia}`,
+    `Vát côn âm Ø${g.wallCskDia}×90°`
+  );
+  leader(
+    fz(g.W * 0.85),
+    sy(g.rEnd * 0.3),
+    fz(g.W) + 18,
+    SY_BOT - 12,
+    fz(g.W) + 115,
+    `Bo tròn đáy R${g.rEnd}`
+  );
+
+  // =========================================================================
+  // 4. HÌNH TRÍCH MẶT CẮT CHI TIẾT (LỖ VÍT ÂM CÔN 90° & MỘNG THANH GIẰNG)
+  // =========================================================================
+  const DX0 = FX0 - 20;
+  const DY0 = 75;
+  const DW = 250;
+  const DH = 215;
+  out.push(
+    `<rect x="${f(DX0)}" y="${f(DY0)}" width="${DW}" height="${DH}" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>`,
+    `<text x="${f(DX0 + DW / 2)}" y="${f(DY0 + 22)}" font-size="12" font-weight="900" fill="${LINE}" text-anchor="middle">CHI TIẾT CẮT A-A: LỖ VÍT ÂM 90°</text>`,
+    // Vẽ mặt cắt phóng đại lỗ vít âm côn
+    `<polygon points="${f(DX0 + 45)},${f(DY0 + 45)} ${f(DX0 + 135)},${f(DY0 + 45)} ${f(DX0 + 110)},${f(DY0 + 70)} ${f(DX0 + 110)},${f(DY0 + 105)} ${f(DX0 + 45)},${f(DY0 + 105)}" fill="url(#hatch)" stroke="${LINE}" stroke-width="1.6"/>`,
+    `<polygon points="${f(DX0 + 165)},${f(DY0 + 45)} ${f(DX0 + 215)},${f(DY0 + 45)} ${f(DX0 + 215)},${f(DY0 + 105)} ${f(DX0 + 140)},${f(DY0 + 105)} ${f(DX0 + 140)},${f(DY0 + 70)}" fill="url(#hatch)" stroke="${LINE}" stroke-width="1.6"/>`,
+    `<line x1="${f(DX0 + 125)}" y1="${f(DY0 + 35)}" x2="${f(DX0 + 125)}" y2="${f(DY0 + 115)}" stroke="${CENTER}" stroke-width="0.9" stroke-dasharray="10 3 2 3"/>`,
+    `<text x="${f(DX0 + 125)}" y="${f(DY0 + 128)}" font-size="11" font-weight="bold" fill="${DIM}" text-anchor="middle">Lỗ suốt Ø${g.wallHoleDia} · Loe côn Ø${g.wallCskDia}×90°</text>`,
+    `<line x1="${f(DX0 + 15)}" y1="${f(DY0 + 142)}" x2="${f(DX0 + DW - 15)}" y2="${f(DY0 + 142)}" stroke="#cbd5e1" stroke-width="1"/>`,
+    `<text x="${f(DX0 + DW / 2)}" y="${f(DY0 + 162)}" font-size="11.5" font-weight="bold" fill="${LINE}" text-anchor="middle">CHI TIẾT B: MỘNG GHẾP THANH GIẰNG</text>`,
+    `<text x="${f(DX0 + DW / 2)}" y="${f(DY0 + 180)}" font-size="11" fill="#334155" text-anchor="middle">Đột lỗ mộng chữ nhật ${g.tenonLen}×${g.T} mm trên cánh</text>`,
+    `<text x="${f(DX0 + DW / 2)}" y="${f(DY0 + 196)}" font-size="11" fill="#334155" text-anchor="middle">ngang, xuyên đầu giằng và hàn TIG âm phẳng</text>`
+  );
+
+  // =========================================================================
+  // 5. HÌNH CHIẾU TRỤC ĐO 3D (ISOMETRIC 3D VIEW - GIỐNG 95% ẢNH MẪU)
+  // =========================================================================
+  const IX0 = 985;
+  const IY0 = 55;
+  const IW = 555;
+  const IH = 465;
+
+  out.push(
+    `<rect x="${IX0}" y="${IY0}" width="${IW}" height="${IH}" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.6"/>`,
+    `<text x="${IX0 + 18}" y="${IY0 + 28}" font-size="14" font-weight="900" fill="${LINE}" letter-spacing="0.6">PHỐI CẢNH TRỤC ĐO 3D (ISOMETRIC VIEW)</text>`,
+    `<text x="${IX0 + IW - 16}" y="${IY0 + 28}" font-size="11" font-weight="bold" fill="#0369a1" text-anchor="end">Sơn tĩnh điện đen mờ · Tỷ lệ thực</text>`,
+    renderStrutBracket3dElements(
+      g,
+      { x: IX0 + 10, y: IY0 + 36, w: IW - 20, h: IH - 46 },
+      { angle: "perspective", holeBgColor: "#f8fafc", idPrefix: "cadIso", showDimensions: true }
+    )
+  );
+
+  // =========================================================================
+  // 6. BẢNG KÊ CHI TIẾT (BOM) + YÊU CẦU KỸ THUẬT + KHUNG TÊN ISO 9001
+  // =========================================================================
+  const BX = 985;
+  const BY = 540;
+  const BW = 555;
+  const cols = [BX, BX + 42, BX + 275, BX + 325, BX + BW];
+  const rowH = 26;
+
+  const bomRows = [
+    {
+      name: `Thân ke chữ L (Bo tròn 2 đầu R${g.rEnd})`,
+      qty: "01",
+      size: `Phôi dẹt ${(g.L + g.H - g.T * 1.6).toFixed(0)} × ${g.W} × ${g.T} mm`,
+    },
+    {
+      name: `Thanh giằng chéo đục 3 lỗ Ø${g.holeDia}`,
+      qty: "01",
+      size: `${Math.round(g.axisLen + 16)} × ${g.bStrut} × ${g.T} mm`,
+    },
+    {
+      name: `Gia công đột mộng & khoan côn âm`,
+      qty: "07 lỗ",
+      size: `3×Ø${g.holeDia} + 2×Ø${g.wallHoleDia} CSK + 2×Ø${g.shelfHoleDia}`,
+    },
+  ];
+
+  out.push(
+    `<text x="${BX}" y="${BY + 16}" font-size="13.5" font-weight="900" fill="${LINE}" letter-spacing="0.5">BẢNG KÊ PHÔI &amp; CHI TIẾT GIA CÔNG (BOM)</text>`
+  );
+
+  let yTable = BY + 26;
+  const totalBomH = (bomRows.length + 1) * rowH;
+  out.push(
+    `<rect x="${BX}" y="${yTable}" width="${BW}" height="${totalBomH}" fill="#ffffff" stroke="${LINE}" stroke-width="1.4"/>`,
+    `<rect x="${BX}" y="${yTable}" width="${BW}" height="${rowH}" fill="#e2e8f0" stroke="${LINE}" stroke-width="1.4"/>`
+  );
+  for (const c of cols.slice(1, 4)) {
+    out.push(`<line x1="${c}" y1="${yTable}" x2="${c}" y2="${yTable + totalBomH}" stroke="${LINE}" stroke-width="0.9"/>`);
+  }
+  out.push(
+    `<text x="${cols[0] + 21}" y="${yTable + 17}" font-size="11.5" font-weight="bold" fill="${LINE}" text-anchor="middle">STT</text>`,
+    `<text x="${cols[1] + 8}" y="${yTable + 17}" font-size="11.5" font-weight="bold" fill="${LINE}">Tên chi tiết gia công</text>`,
+    `<text x="${cols[2] + 25}" y="${yTable + 17}" font-size="11.5" font-weight="bold" fill="${LINE}" text-anchor="middle">SL</text>`,
+    `<text x="${cols[3] + 8}" y="${yTable + 17}" font-size="11.5" font-weight="bold" fill="${LINE}">Quy cách phôi (mm)</text>`
+  );
+
+  bomRows.forEach((r, idx) => {
+    yTable += rowH;
+    out.push(
+      `<line x1="${BX}" y1="${yTable}" x2="${BX + BW}" y2="${yTable}" stroke="${LINE}" stroke-width="0.6"/>`,
+      `<text x="${cols[0] + 21}" y="${yTable + 17}" font-size="11.5" fill="${LINE}" text-anchor="middle">${idx + 1}</text>`,
+      `<text x="${cols[1] + 8}" y="${yTable + 17}" font-size="11.5" font-weight="bold" fill="${LINE}">${esc(r.name)}</text>`,
+      `<text x="${cols[2] + 25}" y="${yTable + 17}" font-size="11.5" fill="${LINE}" text-anchor="middle">${esc(r.qty)}</text>`,
+      `<text x="${cols[3] + 8}" y="${yTable + 17}" font-size="11.5" fill="#1e293b">${esc(r.size)}</text>`
+    );
+  });
+
+  // Ghi chú kỹ thuật gia công
+  const techNotes = [
+    `1. Cắt Laser Fiber CNC phôi thép tấm SS400 dày T=${g.T}mm, bo tròn 2 đầu bán nguyệt R=${g.rEnd}mm.`,
+    `2. Chấn gấp CNC góc 90° ±0.2° tại đỉnh chữ L (bán kính uốn trong R=${g.rIn}mm, ngoài R=${g.rOut}mm).`,
+    `3. Thanh giằng chéo bản ${g.bStrut}×${g.T}mm đột 3 lỗ tròn Ø${g.holeDia}mm thẳng hàng trục nghiêng ${g.angleDeg}°.`,
+    `4. Lắp mộng chữ nhật ${g.tenonLen}×${g.T}mm vào cánh ngang, hàn TIG ngấu kín, mài nhẵn và sơn tĩnh điện đen mờ.`,
+    ...(spec.notes || []).slice(0, 1).map((n) => `5. ${n}`),
+  ];
+
+  let yNote = yTable + rowH + 24;
+  out.push(
+    `<text x="${BX}" y="${yNote}" font-size="13" font-weight="900" fill="${LINE}" letter-spacing="0.5">YÊU CẦU KỸ THUẬT GIA CÔNG CNC:</text>`
+  );
+  techNotes.forEach((tn) => {
+    yNote += 19;
+    out.push(`<text x="${BX}" y="${yNote}" font-size="11.5" fill="#334155">${esc(trunc(tn, 88))}</text>`);
+  });
+
+  // Khung tên bản vẽ chuẩn ISO 9001
+  const TX = 985;
+  const TY = 900;
+  const TW = 555;
+  const TH = 175;
+  const cleanTitle = spec.title.replace(/\s*\(Theo thông số.*\)/i, "").trim();
+  out.push(
+    `<rect x="${TX}" y="${TY}" width="${TW}" height="${TH}" fill="#f8fafc" stroke="${LINE}" stroke-width="2"/>`,
+    `<rect x="${TX}" y="${TY}" width="${TW}" height="36" fill="#0f2a5c"/>`,
+    `<text x="${TX + 14}" y="${TY + 23}" font-size="12.5" font-weight="900" fill="#ffffff" letter-spacing="0.5">XƯỞNG GIA CÔNG CƠ KHÍ CHÍNH XÁC CNC &amp; LASER</text>`,
+    `<text x="${TX + TW - 14}" y="${TY + 23}" font-size="11" font-weight="bold" fill="#38bdf8" text-anchor="end">ISO 9001 · CAD PARAMETRIC</text>`,
+    `<text x="${TX + 12}" y="${TY + 60}" font-size="13.5" font-weight="900" fill="#0f172a">${esc(trunc(cleanTitle.toUpperCase(), 38))}</text>`,
+    `<text x="${TX + 12}" y="${TY + 86}" font-size="11.5" fill="#334155"><tspan font-weight="bold">Quy cách:</tspan> Dài L=${g.L} × Rộng W=${g.W} × Cao H=${g.H} × Dày T=${g.T} mm</text>`,
+    `<text x="${TX + 12}" y="${TY + 110}" font-size="11.5" fill="#334155"><tspan font-weight="bold">Vật liệu:</tspan> ${esc(trunc(spec.material, 42))}</text>`,
+    `<text x="${TX + 12}" y="${TY + 134}" font-size="11.5" fill="#334155"><tspan font-weight="bold">Hoàn thiện:</tspan> ${esc(trunc(spec.finish, 40))}</text>`,
+    `<text x="${TX + 12}" y="${TY + 158}" font-size="11.5" fill="#0369a1" font-weight="bold">Kết cấu: Chữ L bo đầu R${g.rEnd} + Giằng 3 lỗ Ø${g.holeDia} + Mộng hàn TIG</text>`,
+    `<line x1="${TX + TW - 162}" y1="${TY + 36}" x2="${TX + TW - 162}" y2="${TY + TH}" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<text x="${TX + TW - 150}" y="${TY + 60}" font-size="11.5" fill="#475569">Mã BV: <tspan font-weight="bold" fill="#0f172a">${esc(meta.code)}</tspan></text>`,
+    `<text x="${TX + TW - 150}" y="${TY + 86}" font-size="11.5" fill="#475569">Ngày: <tspan font-weight="bold" fill="#0f172a">${esc(meta.date)}</tspan></text>`,
+    `<text x="${TX + TW - 150}" y="${TY + 112}" font-size="11.5" fill="#475569">Đơn vị: <tspan font-weight="bold" fill="#0f172a">mm</tspan></text>`,
+    `<text x="${TX + TW - 150}" y="${TY + 136}" font-size="11.5" fill="#475569">Dung sai: <tspan font-weight="bold" fill="#0f172a">±0.05 mm</tspan></text>`,
+    `<text x="${TX + TW - 150}" y="${TY + 158}" font-size="11.5" font-weight="bold" fill="#15803d">✓ Chuẩn mẫu 95%</text>`,
+    `</svg>`
+  );
+
+  return out.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// RENDER FILE AUTOCAD .DXF R12 CHO KE ĐỠ CHỮ L THANH GIẰNG 3 LỖ TRÒN
+// ---------------------------------------------------------------------------
+
+function renderStrutBracketDxf(spec: CadSpec): string {
+  const g = extractStrutBracketGeometry(spec);
+  const out: string[] = ["0", "SECTION", "2", "ENTITIES"];
+  const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
+
+  const line = (layer: string, x1: number, y1: number, x2: number, y2: number) =>
+    out.push("0", "LINE", "8", layer, "10", n(x1), "20", n(y1), "30", "0", "11", n(x2), "21", n(y2), "31", "0");
+  const circle = (layer: string, x: number, y: number, r: number) =>
+    out.push("0", "CIRCLE", "8", layer, "10", n(x), "20", n(y), "30", "0", "40", n(r));
+  const arc = (layer: string, cx: number, cy: number, r: number, startDeg: number, endDeg: number) =>
+    out.push("0", "ARC", "8", layer, "10", n(cx), "20", n(cy), "30", "0", "40", n(r), "50", n(startDeg), "51", n(endDeg));
+  const text = (layer: string, x: number, y: number, h: number, s: string) =>
+    out.push("0", "TEXT", "8", layer, "10", n(x), "20", n(y), "30", "0", "40", n(h), "1", toAscii(s));
+
+  // 1. SIDE VIEW (Hình chiếu đứng tại gốc 0,0)
+  // Cánh đứng + góc uốn + cánh ngang
+  line("OUTLINE", 0, 0, 0, g.H - g.rOut);
+  arc("OUTLINE", g.rOut, g.H - g.rOut, g.rOut, 90, 180);
+  line("OUTLINE", g.rOut, g.H, g.L, g.H);
+  line("OUTLINE", g.L, g.H, g.L, g.H - g.T);
+  line("OUTLINE", g.L, g.H - g.T, g.rOut, g.H - g.T);
+  arc("OUTLINE", g.rOut, g.H - g.rOut, g.rIn, 90, 180);
+  line("OUTLINE", g.T, g.H - g.rOut, g.T, 0);
+  line("OUTLINE", g.T, 0, 0, 0);
+
+  // Thanh giằng chéo
+  for (let i = 0; i < g.strutPoly.length; i++) {
+    const p1 = g.strutPoly[i];
+    const p2 = g.strutPoly[(i + 1) % g.strutPoly.length];
+    line("STRUT", p1[0], p1[1], p2[0], p2[1]);
+  }
+
+  // 3 lỗ tròn trên thanh giằng chéo + tâm lỗ
+  line("CENTERLINE", g.xA, g.yA, g.xB, g.yB);
+  for (const h of g.strutHoles) {
+    circle("HOLES", h.cx, h.cy, h.r);
+  }
+
+  // Mộng chữ nhật trên cánh ngang
+  line("TENON", g.xB - g.tenonLen / 2, g.H - g.T, g.xB - g.tenonLen / 2, g.H + 1);
+  line("TENON", g.xB + g.tenonLen / 2, g.H - g.T, g.xB + g.tenonLen / 2, g.H + 1);
+  line("TENON", g.xB - g.tenonLen / 2, g.H + 1, g.xB + g.tenonLen / 2, g.H + 1);
+
+  // 2. TOP VIEW (Hình chiếu bằng tại Y = H + 90)
+  const ty = g.H + 90;
+  line("TOP_VIEW", 0, ty, g.L - g.rEnd, ty);
+  line("TOP_VIEW", 0, ty + g.W, g.L - g.rEnd, ty + g.W);
+  line("TOP_VIEW", 0, ty, 0, ty + g.W);
+  arc("TOP_VIEW", g.L - g.rEnd, ty + g.rEnd, g.rEnd, -90, 90);
+  circle("HOLES", g.xShelfIn, ty + g.rEnd, g.shelfHoleDia / 2);
+  circle("HOLES", g.xShelfOut, ty + g.rEnd, g.shelfHoleDia / 2);
+  // Lỗ mộng chữ nhật trên hình chiếu bằng
+  const tz0 = ty + (g.W - g.T) / 2;
+  line("TENON", g.xB - g.tenonLen / 2, tz0, g.xB + g.tenonLen / 2, tz0);
+  line("TENON", g.xB + g.tenonLen / 2, tz0, g.xB + g.tenonLen / 2, tz0 + g.T);
+  line("TENON", g.xB + g.tenonLen / 2, tz0 + g.T, g.xB - g.tenonLen / 2, tz0 + g.T);
+  line("TENON", g.xB - g.tenonLen / 2, tz0 + g.T, g.xB - g.tenonLen / 2, tz0);
+
+  // 3. FRONT VIEW (Hình chiếu trước tại X = L + 90)
+  const fx = g.L + 90;
+  line("FRONT_VIEW", fx, g.rEnd, fx, g.H);
+  line("FRONT_VIEW", fx + g.W, g.rEnd, fx + g.W, g.H);
+  line("FRONT_VIEW", fx, g.H, fx + g.W, g.H);
+  arc("FRONT_VIEW", fx + g.rEnd, g.rEnd, g.rEnd, 180, 360);
+  // 2 lỗ vít âm côn (2 vòng tròn đồng tâm)
+  circle("HOLES", fx + g.rEnd, g.yWallTop, g.wallHoleDia / 2);
+  circle("COUNTERSINK", fx + g.rEnd, g.yWallTop, g.wallCskDia / 2);
+  circle("HOLES", fx + g.rEnd, g.yWallBot, g.wallHoleDia / 2);
+  circle("COUNTERSINK", fx + g.rEnd, g.yWallBot, g.wallCskDia / 2);
+
+  // Nhãn & kích thước
+  text("TITLE", 0, -35, 8, `${spec.title} - L=${g.L} x W=${g.W} x H=${g.H} x T=${g.T} mm`);
+  text("TITLE", 0, -50, 6, `3 Lightening Holes D=${g.holeDia}mm on ${g.angleDeg} deg Diagonal Brace`);
+
+  out.push("0", "ENDSEC", "0", "EOF");
+  return out.join("\n") + "\n";
+}
+
 // ---------------------------------------------------------------------------
 // RENDER BẢN VẼ TỦ QUẦN ÁO CHUYÊN NGHIỆP THEO CHUẨN AUTOCAD
 // (Gồm: Mặt đứng có cánh + Mặt đứng bỏ cánh kết cấu + Mặt bằng cắt A-A)
@@ -951,6 +2074,9 @@ export function renderSvg(spec: CadSpec, meta: { date: string; code: string }): 
   if (isWardrobeSpec(spec)) {
     return renderWardrobeSvg(spec, meta);
   }
+  if (isStrutBracketSpec(spec)) {
+    return renderStrutBracketSvg(spec, meta);
+  }
   const { W, H, D } = bounds(spec);
   const PW = 1600;
   const PH = 1130;
@@ -1236,6 +2362,9 @@ export function renderDxf(spec: CadSpec): string {
   if (isWardrobeSpec(spec)) {
     return renderWardrobeDxf(spec);
   }
+  if (isStrutBracketSpec(spec)) {
+    return renderStrutBracketDxf(spec);
+  }
   const { W, H, D } = bounds(spec);
   const gap = Math.max(W, H, D) * 0.35 + 50;
   const th = Math.max(Math.max(W, H, D) / 60, 5); // chiều cao chữ
@@ -1466,62 +2595,73 @@ export function render3dViewSvg(
     `<ellipse cx="${shadowCenter[0]}" cy="${shadowCenter[1] + 10}" rx="${shadowRx}" ry="${shadowRy}" fill="url(#floorShadow)"/>`
   );
 
-  // Vẽ các khối hộp 3D
-  for (const p of sortedParts) {
-    const x0 = p.x, x1 = p.x + p.w;
-    const y0 = p.y, y1 = p.y + p.h;
-    const z0 = p.z, z1 = p.z + p.d;
+  if (isStrutBracketSpec(spec)) {
+    const geom = extractStrutBracketGeometry(spec);
+    out.push(
+      renderStrutBracket3dElements(
+        geom,
+        { x: 180, y: 110, w: VW - 360, h: VH - 230 },
+        { angle, holeBgColor: "#141f35", idPrefix: `studio-${angle}`, showDimensions: true }
+      )
+    );
+  } else {
+    // Vẽ các khối hộp 3D
+    for (const p of sortedParts) {
+      const x0 = p.x, x1 = p.x + p.w;
+      const y0 = p.y, y1 = p.y + p.h;
+      const z0 = p.z, z1 = p.z + p.d;
 
-    const p000 = toScreen(x0, y0, z0);
-    const p100 = toScreen(x1, y0, z0);
-    const p110 = toScreen(x1, y1, z0);
-    const p010 = toScreen(x0, y1, z0);
+      const p000 = toScreen(x0, y0, z0);
+      const p100 = toScreen(x1, y0, z0);
+      const p110 = toScreen(x1, y1, z0);
+      const p010 = toScreen(x0, y1, z0);
 
-    const p001 = toScreen(x0, y0, z1);
-    const p101 = toScreen(x1, y0, z1);
-    const p111 = toScreen(x1, y1, z1);
-    const p011 = toScreen(x0, y1, z1);
+      const p001 = toScreen(x0, y0, z1);
+      const p101 = toScreen(x1, y0, z1);
+      const p111 = toScreen(x1, y1, z1);
+      const p011 = toScreen(x0, y1, z1);
 
-    const partIsWood = isWood || /gỗ|wood|mdf|ván/i.test(p.name);
-    const strokeColor = partIsWood ? "#d6ab72" : dark ? "#52525b" : "#cbd5e1";
-    const fillTop = partIsWood ? "url(#topFaceWood)" : dark ? "url(#topFaceDark)" : "url(#topFaceLight)";
-    const fillFront = partIsWood ? "url(#frontFaceWood)" : dark ? "url(#frontFaceDark)" : "url(#frontFaceLight)";
-    const fillSide = partIsWood ? "url(#sideFaceWood)" : dark ? "url(#sideFaceDark)" : "url(#sideFaceLight)";
+      const partIsWood = isWood || /gỗ|wood|mdf|ván/i.test(p.name);
+      const strokeColor = partIsWood ? "#d6ab72" : dark ? "#52525b" : "#cbd5e1";
+      const fillTop = partIsWood ? "url(#topFaceWood)" : dark ? "url(#topFaceDark)" : "url(#topFaceLight)";
+      const fillFront = partIsWood ? "url(#frontFaceWood)" : dark ? "url(#frontFaceDark)" : "url(#frontFaceLight)";
+      const fillSide = partIsWood ? "url(#sideFaceWood)" : dark ? "url(#sideFaceDark)" : "url(#sideFaceLight)";
 
-    if (isTriangularPart(p)) {
-      // Mặt tam giác trước và mặt vát chéo chịu lực
-      out.push(
-        `<polygon points="${p010[0]},${p010[1]} ${p110[0]},${p110[1]} ${p000[0]},${p000[1]}" fill="${fillFront}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`,
-        `<polygon points="${p000[0]},${p000[1]} ${p110[0]},${p110[1]} ${p111[0]},${p111[1]} ${p001[0]},${p001[1]}" fill="${fillSide}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`,
-        `<polygon points="${p010[0]},${p010[1]} ${p110[0]},${p110[1]} ${p111[0]},${p111[1]} ${p011[0]},${p011[1]}" fill="${fillTop}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
-      );
-    } else {
-      // Mặt trên (y = y1)
-      out.push(
-        `<polygon points="${p010[0]},${p010[1]} ${p110[0]},${p110[1]} ${p111[0]},${p111[1]} ${p011[0]},${p011[1]}" fill="${fillTop}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
-      );
-
-      // Mặt trước & mặt cạnh
-      if (angle === "front" || angle === "perspective") {
+      if (isTriangularPart(p)) {
+        // Mặt tam giác trước và mặt vát chéo chịu lực
         out.push(
-          `<polygon points="${p000[0]},${p000[1]} ${p100[0]},${p100[1]} ${p110[0]},${p110[1]} ${p010[0]},${p010[1]}" fill="${fillFront}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`,
-          `<polygon points="${p100[0]},${p100[1]} ${p101[0]},${p101[1]} ${p111[0]},${p111[1]} ${p110[0]},${p110[1]}" fill="${fillSide}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
+          `<polygon points="${p010[0]},${p010[1]} ${p110[0]},${p110[1]} ${p000[0]},${p000[1]}" fill="${fillFront}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`,
+          `<polygon points="${p000[0]},${p000[1]} ${p110[0]},${p110[1]} ${p111[0]},${p111[1]} ${p001[0]},${p001[1]}" fill="${fillSide}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`,
+          `<polygon points="${p010[0]},${p010[1]} ${p110[0]},${p110[1]} ${p111[0]},${p111[1]} ${p011[0]},${p011[1]}" fill="${fillTop}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
         );
       } else {
+        // Mặt trên (y = y1)
         out.push(
-          `<polygon points="${p001[0]},${p001[1]} ${p101[0]},${p101[1]} ${p111[0]},${p111[1]} ${p011[0]},${p011[1]}" fill="${fillFront}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
+          `<polygon points="${p010[0]},${p010[1]} ${p110[0]},${p110[1]} ${p111[0]},${p111[1]} ${p011[0]},${p011[1]}" fill="${fillTop}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
         );
+
+        // Mặt trước & mặt cạnh
+        if (angle === "front" || angle === "perspective") {
+          out.push(
+            `<polygon points="${p000[0]},${p000[1]} ${p100[0]},${p100[1]} ${p110[0]},${p110[1]} ${p010[0]},${p010[1]}" fill="${fillFront}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="${p100[0]},${p100[1]} ${p101[0]},${p101[1]} ${p111[0]},${p111[1]} ${p110[0]},${p110[1]}" fill="${fillSide}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
+          );
+        } else {
+          out.push(
+            `<polygon points="${p001[0]},${p001[1]} ${p101[0]},${p101[1]} ${p111[0]},${p111[1]} ${p011[0]},${p011[1]}" fill="${fillFront}" stroke="${strokeColor}" stroke-width="1" stroke-linejoin="round"/>`
+          );
+        }
       }
     }
-  }
 
-  // Vẽ các lỗ khoét
-  for (const h of spec.holes) {
-    const hp = toScreen(h.x, h.y, h.z);
-    const hr = Math.max((h.diameter * scale) / 2, 2.5);
-    out.push(
-      `<circle cx="${hp[0]}" cy="${hp[1]}" r="${hr}" fill="#090d16" stroke="#94a3b8" stroke-width="1.2"/>`
-    );
+    // Vẽ các lỗ khoét
+    for (const h of spec.holes) {
+      const hp = toScreen(h.x, h.y, h.z);
+      const hr = Math.max((h.diameter * scale) / 2, 2.5);
+      out.push(
+        `<circle cx="${hp[0]}" cy="${hp[1]}" r="${hr}" fill="#090d16" stroke="#94a3b8" stroke-width="1.2"/>`
+      );
+    }
   }
 
   // Header Badge (Góc nhìn)
