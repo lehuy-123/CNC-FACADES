@@ -1,11 +1,57 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { CAD_EXTENSIONS, IMAGE_EXTENSIONS, saveUpload } from "@/lib/uploads";
+import { CAD_EXTENSIONS, IMAGE_EXTENSIONS, saveUpload, UPLOAD_DIR } from "@/lib/uploads";
 import { generateOrderCode } from "@/lib/password";
 import { normalizePhone } from "@/lib/site";
 import { OrderStatus } from "@/app/generated/prisma/enums";
 import { sendNewOrderEmail } from "@/lib/email";
+import { isDatabaseConfigured } from "@/lib/data/products";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
+
+const FALLBACK_ORDERS_FILE = path.join(UPLOAD_DIR, "fallback-orders.json");
+
+async function saveFallbackOrder(order: any) {
+  try {
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    let list: any[] = [];
+    try {
+      const data = await readFile(FALLBACK_ORDERS_FILE, "utf-8");
+      list = JSON.parse(data);
+    } catch {}
+    list.unshift(order);
+    await writeFile(FALLBACK_ORDERS_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Save fallback order error:", e);
+  }
+}
+
+async function getFallbackOrders(query: string): Promise<OrderLookupItem[]> {
+  try {
+    const data = await readFile(FALLBACK_ORDERS_FILE, "utf-8");
+    const list = JSON.parse(data);
+    const phoneQuery = normalizePhone(query);
+    const upperQuery = query.toUpperCase();
+    return list
+      .filter((o: any) => o.phone === phoneQuery || o.code === upperQuery)
+      .map((o: any) => ({
+        id: o.id || o.code,
+        code: o.code,
+        customerName: o.customerName,
+        phone: o.phone,
+        requirements: o.requirements,
+        status: (o.status || OrderStatus.PENDING) as OrderStatus,
+        createdAt: new Date(o.createdAt),
+        hasCadFile: Boolean(o.cadFileUrl),
+        hasImageFile: Boolean(o.referenceImageUrl),
+        hasAiSketch: Boolean(o.aiSketchUrl),
+        aiSketchUrl: o.aiSketchUrl,
+      }));
+  } catch {
+    return [];
+  }
+}
 
 export type OrderFormState = {
   status: "idle" | "success" | "error";
@@ -62,10 +108,14 @@ export async function submitOrder(_prev: OrderFormState, formData: FormData): Pr
 
     // Sinh mã đơn hàng duy nhất
     let code = generateOrderCode();
-    for (let i = 0; i < 5; i++) {
-      const exists = await prisma.customOrder.findFirst({ where: { code } });
-      if (!exists) break;
-      code = generateOrderCode();
+    if (isDatabaseConfigured()) {
+      try {
+        for (let i = 0; i < 5; i++) {
+          const exists = await prisma.customOrder.findFirst({ where: { code } });
+          if (!exists) break;
+          code = generateOrderCode();
+        }
+      } catch {}
     }
 
     const rawModifiedParams = String(formData.get("modifiedParams") ?? "").trim();
@@ -76,8 +126,37 @@ export async function submitOrder(_prev: OrderFormState, formData: FormData): Pr
       } catch {}
     }
 
-    await prisma.customOrder.create({
-      data: {
+    if (isDatabaseConfigured()) {
+      try {
+        await prisma.customOrder.create({
+          data: {
+            code,
+            customerName,
+            phone,
+            requirements,
+            cadFileUrl,
+            referenceImageUrl,
+            aiSketchUrl,
+            modifiedParams,
+          },
+        });
+      } catch (dbErr) {
+        console.warn("[Order Action] Database offline, saving order to fallback storage:", dbErr);
+        await saveFallbackOrder({
+          code,
+          customerName,
+          phone,
+          requirements,
+          cadFileUrl,
+          referenceImageUrl,
+          aiSketchUrl,
+          modifiedParams,
+          status: "PENDING",
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } else {
+      await saveFallbackOrder({
         code,
         customerName,
         phone,
@@ -86,8 +165,10 @@ export async function submitOrder(_prev: OrderFormState, formData: FormData): Pr
         referenceImageUrl,
         aiSketchUrl,
         modifiedParams,
-      },
-    });
+        status: "PENDING",
+        createdAt: new Date().toISOString(),
+      });
+    }
 
     // Gửi email thông báo cho Admin (huy01082004@gmail.com)
     sendNewOrderEmail({
@@ -99,7 +180,7 @@ export async function submitOrder(_prev: OrderFormState, formData: FormData): Pr
       hasImage: Boolean(referenceImageUrl),
       hasAiSketch: Boolean(aiSketchUrl),
       aiSketchUrl: aiSketchUrl ?? undefined,
-    }).catch((e) => console.error("Send new order email error:", e));
+    }).catch((e) => console.warn("Send new order email error:", e));
 
     return {
       status: "success",
@@ -111,7 +192,7 @@ export async function submitOrder(_prev: OrderFormState, formData: FormData): Pr
       err instanceof Error && /File AutoCAD|Hình ảnh mẫu/.test(err.message)
         ? err.message
         : "Không thể gửi yêu cầu lúc này. Vui lòng thử lại sau.";
-    if (!(err instanceof Error && /File AutoCAD|Hình ảnh mẫu/.test(err.message))) console.error(err);
+    if (!(err instanceof Error && /File AutoCAD|Hình ảnh mẫu/.test(err.message))) console.warn(err);
     return { status: "error", message, values };
   }
 }
@@ -139,36 +220,54 @@ export async function lookupOrders(query: string): Promise<{ success: boolean; d
 
   const phoneQuery = normalizePhone(trimmed);
 
-  try {
-    const orders = await prisma.customOrder.findMany({
-      where: {
-        OR: [
-          { phone: phoneQuery },
-          { code: { equals: trimmed.toUpperCase() } },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
+  if (isDatabaseConfigured()) {
+    try {
+      const orders = await prisma.customOrder.findMany({
+        where: {
+          OR: [
+            { phone: phoneQuery },
+            { code: { equals: trimmed.toUpperCase() } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
 
+      if (orders.length > 0) {
+        return {
+          success: true,
+          data: orders.map((o) => ({
+            id: o.id,
+            code: o.code,
+            customerName: o.customerName,
+            phone: o.phone,
+            requirements: o.requirements,
+            status: o.status,
+            createdAt: o.createdAt,
+            hasCadFile: Boolean(o.cadFileUrl),
+            hasImageFile: Boolean(o.referenceImageUrl),
+            hasAiSketch: Boolean(o.aiSketchUrl),
+            aiSketchUrl: o.aiSketchUrl,
+          })),
+        };
+      }
+    } catch (error) {
+      console.warn("Lookup orders DB error, trying fallback storage:", error);
+    }
+  }
+
+  // Fallback tra cứu từ file lưu trữ cục bộ khi DB offline
+  const fallbackOrders = await getFallbackOrders(trimmed);
+  if (fallbackOrders.length > 0) {
     return {
       success: true,
-      data: orders.map((o) => ({
-        id: o.id,
-        code: o.code,
-        customerName: o.customerName,
-        phone: o.phone,
-        requirements: o.requirements,
-        status: o.status,
-        createdAt: o.createdAt,
-        hasCadFile: Boolean(o.cadFileUrl),
-        hasImageFile: Boolean(o.referenceImageUrl),
-        hasAiSketch: Boolean(o.aiSketchUrl),
-        aiSketchUrl: o.aiSketchUrl,
-      })),
+      data: fallbackOrders,
     };
-  } catch (error) {
-    console.error("Lookup orders error:", error);
-    return { success: false, message: "Lỗi kết nối cơ sở dữ liệu. Vui lòng thử lại sau." };
   }
+
+  return {
+    success: true,
+    data: [],
+    message: "Không tìm thấy đơn hàng nào khớp với thông tin đã nhập.",
+  };
 }

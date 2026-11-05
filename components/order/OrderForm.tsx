@@ -122,7 +122,7 @@ export default function OrderForm({ product }: Props) {
             setCalcError(res.message || "Không thể tính toán bản vẽ tham số.");
           }
         } catch (err) {
-          console.error("Calculate CAD error:", err);
+          console.warn("Calculate CAD error:", err);
           setCalcError("Đã có sự cố khi gọi engine tính toán CAD.");
         }
       });
@@ -153,7 +153,7 @@ export default function OrderForm({ product }: Props) {
           setCalcError(res.message || "Không thể tính toán bản vẽ tham số. Vui lòng thử lại.");
         }
       } catch (err) {
-        console.error("Calculate CAD error:", err);
+        console.warn("Calculate CAD error:", err);
         setCalcError("Đã có sự cố khi gọi engine tính toán CAD.");
       }
     });
@@ -458,7 +458,11 @@ export default function OrderForm({ product }: Props) {
                   className="w-full h-auto max-h-[520px] object-contain rounded-lg border border-slate-200 bg-white shadow-inner"
                 />
                 <div className="mt-2 flex w-full items-center justify-between px-2 text-[11px] text-slate-500">
-                  <span>Hệ trục: 3 Hình chiếu + Trục đo Isometric + Khung tên xưởng</span>
+                  <span>
+                    {product?.name && /tủ|wardrobe/i.test(product.name)
+                      ? "Bản vẽ kỹ thuật xưởng: Mặt đứng có cánh + Mặt đứng bỏ cánh (nội thất) + Mặt bằng A-A"
+                      : "Hệ trục: 3 Hình chiếu + Trục đo Isometric + Khung tên xưởng"}
+                  </span>
                   <a
                     href={svgUrl}
                     target="_blank"

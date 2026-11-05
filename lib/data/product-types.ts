@@ -7,6 +7,7 @@ export type ProductItem = {
   dimensions: string | null;
   material?: string | null;
   imageUrl: string;
+  cadImageUrl?: string | null;
   baseAiContext?: string | null;
   cadTemplate?: any;
   createdAt?: Date;
@@ -14,6 +15,7 @@ export type ProductItem = {
 };
 
 export const DEFAULT_CATEGORIES = [
+  "Tủ áo & Nội thất CNC",
   "Kệ & Tủ kim loại",
   "Bàn & Khung kết cấu",
   "Hộp kỹ thuật & Vỏ tủ",

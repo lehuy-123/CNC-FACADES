@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import OrderForm from "@/components/order/OrderForm";
+import ProductMediaGallery from "@/components/product/ProductMediaGallery";
 import { getProductById, getSampleProducts } from "@/lib/data/products";
 import { formatVND } from "@/lib/format";
 
@@ -72,19 +73,14 @@ async function ProductDetailContent({ params }: Props) {
       {/* 2. KHỐI CHI TIẾT SẢN PHẨM MẪU (PRODUCT DETAILS) */}
       <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
         <div className="grid gap-8 lg:grid-cols-12 items-start">
-          {/* Cột trái: Hình ảnh sản phẩm chất lượng cao */}
+          {/* Cột trái: Hình ảnh sản phẩm chất lượng cao & Bản vẽ kỹ thuật */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="relative aspect-4/3 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={product.imageUrl}
-                alt={product.name}
-                className="h-full w-full object-cover transition duration-500 hover:scale-105"
-              />
-              <span className="absolute left-3 top-3 rounded-full bg-blue-600/90 px-3 py-1 text-xs font-bold text-white shadow-md backdrop-blur-xs">
-                {product.category}
-              </span>
-            </div>
+            <ProductMediaGallery
+              name={product.name}
+              category={product.category}
+              imageUrl={product.imageUrl}
+              cadImageUrl={product.cadImageUrl}
+            />
 
             {/* Cam kết xưởng */}
             <div className="rounded-2xl bg-blue-50/70 border border-blue-100 p-4 space-y-2 text-xs text-blue-900">

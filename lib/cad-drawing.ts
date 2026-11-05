@@ -137,7 +137,820 @@ function toAscii(s: string) {
 // SVG
 // ---------------------------------------------------------------------------
 
+export function isWardrobeSpec(spec: CadSpec): boolean {
+  if (!spec) return false;
+  const rawTitle = (spec.title || "").toLowerCase();
+  const normTitle = rawTitle
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+
+  if (
+    /tủ áo|tủ quần áo|wardrobe|tủ đồ|tu ao|tu quan ao|tu do/i.test(normTitle) ||
+    /tủ áo|tủ quần áo|wardrobe|tủ đồ/i.test(rawTitle)
+  ) {
+    return true;
+  }
+
+  const rawParts = (spec.parts || []).map((p) => p.name || "").join(" ").toLowerCase();
+  const normParts = rawParts
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+
+  return (
+    (/suốt treo|thanh treo|cánh lật/i.test(rawParts) || /suot treo|thanh treo|canh lat/i.test(normParts)) &&
+    (/ngăn kéo/i.test(rawParts) || /ngan keo/i.test(normParts))
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RENDER BẢN VẼ TỦ QUẦN ÁO CHUYÊN NGHIỆP THEO CHUẨN AUTOCAD
+// (Gồm: Mặt đứng có cánh + Mặt đứng bỏ cánh kết cấu + Mặt bằng cắt A-A)
+// ---------------------------------------------------------------------------
+
+function renderWardrobeSvg(spec: CadSpec, meta: { date: string; code: string }): string {
+  const { W: rawW, H: rawH, D: rawD } = bounds(spec);
+  const L = Math.max(1200, Math.round(rawW || 2115));
+  const H = Math.max(1500, Math.round(rawH || 2650));
+  const D = Math.max(400, Math.round(rawD || 600));
+
+  // Trích xuất độ dày vách T từ thông số hoặc parts
+  let detectedT = 20;
+  const matchT =
+    (spec.title || "").match(/T=(\d+(?:\.\d+)?)/i) ||
+    (spec.assumptions?.[0] || "").match(/Dày (\d+(?:\.\d+)?)/i);
+  if (matchT) {
+    detectedT = parseFloat(matchT[1]);
+  } else {
+    const thinParts = (spec.parts || []).filter((p) => p.w <= 35 || p.h <= 35 || p.d <= 35);
+    if (thinParts.length > 0) {
+      detectedT = Math.round(
+        thinParts[0].w <= 35 ? thinParts[0].w : thinParts[0].h <= 35 ? thinParts[0].h : thinParts[0].d
+      );
+    }
+  }
+  const T = Math.max(12, Math.min(40, Math.round(detectedT || 20)));
+
+  // Tỷ lệ các thành phần theo thiết kế chuẩn (L=2115, S=300, W1=908, W2=908)
+  const S = Math.max(200, Math.min(500, Math.round(L * (300 / 2115))));
+  const Lcab = L - S;
+  const W1 = Math.round(Lcab / 2);
+  const W2 = Lcab - W1;
+  const wd1 = Math.round(W1 / 2);
+  const wd2 = Math.round(W2 / 2);
+
+  const inW1 = W1 - 1.5 * T;
+  const inW2 = W2 - 1.5 * T;
+  const drawerW = Math.round((inW2 - T) / 2);
+
+  const hTop = Math.max(60, Math.min(140, Math.round(H * (100 / 2650))));
+  const hPlinth = Math.max(40, Math.min(80, Math.round(H * (50 / 2650))));
+  const hBase = hPlinth + T; // Thường là 70mm khi hPlinth=50, T=20
+  const hAvail = H - hTop - hBase; // Chiều cao lọt lòng thân tủ
+  const hLuggage = Math.max(250, Math.min(500, Math.round(hAvail * (370 / 2480))));
+  const hMainBody = hAvail - hLuggage - T;
+  const hHanging = Math.max(800, Math.min(1500, Math.round(hMainBody * (1280 / 2090))));
+  const hLower = hMainBody - hHanging - 2 * T;
+  const hCompartmentMid = Math.max(150, Math.round(hLower * (300 / 770)));
+  const hCompartmentBot = hLower - hCompartmentMid;
+
+  const hFlip = hLuggage + T;
+  const hMain = hMainBody + 2 * T;
+  const hDrawers = hCompartmentMid + hCompartmentBot + 2 * T;
+  const hRdoor = hMain - hDrawers;
+  const hDrawerRow = Math.round(hDrawers / 2);
+
+  const PW = 2200;
+  const PH = 1350;
+  const LINE = "#0f172a";
+  const DIM = "#1d4ed8";
+  const RED = "#dc2626";
+  const out: string[] = [];
+
+  out.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${PW}" height="${PH}" viewBox="0 0 ${PW} ${PH}" font-family="Arial, Helvetica, sans-serif">`,
+    `<defs>`,
+    `<marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="${DIM}"/></marker>`,
+    `<marker id="ar_red" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="${RED}"/></marker>`,
+    `<pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20,0 L0,0 0,20" fill="none" stroke="#f1f5f9" stroke-width="1"/></pattern>`,
+    `<pattern id="ghatch" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="8" stroke="#94a3b8" stroke-width="1.2"/></pattern>`,
+    `</defs>`,
+    `<rect width="${PW}" height="${PH}" fill="#ffffff"/>`,
+    `<rect x="25" y="25" width="${PW - 50}" height="${PH - 50}" fill="none" stroke="${LINE}" stroke-width="1.5"/>`,
+    `<rect x="35" y="35" width="${PW - 70}" height="${PH - 70}" fill="none" stroke="${LINE}" stroke-width="2.5"/>`
+  );
+
+  const scale = Math.min(740 / L, 720 / H);
+
+  // Kích thước vẽ trên canvas
+  const cW = L * scale;
+  const cH = H * scale;
+
+  // Tọa độ hình chiếu 1: MẶT ĐỨNG CÓ CÁNH
+  const X1 = 140;
+  const Y1 = 120;
+  const Y1_bottom = Y1 + cH;
+
+  // Tọa độ hình chiếu 2: MẶT ĐỨNG BỎ CÁNH
+  const X2 = X1 + cW + 180;
+  const Y2 = 120;
+  const Y2_bottom = Y2 + cH;
+
+  // Helper hàm vẽ đường kích thước
+  const dimH = (x1: number, x2: number, yFrom: number, yDim: number, val: number | string) => {
+    const dir = yDim > yFrom ? 1 : -1;
+    out.push(
+      `<path d="M${f(x1)},${f(yFrom + 2 * dir)}V${f(yDim + 5 * dir)}M${f(x2)},${f(yFrom + 2 * dir)}V${f(yDim + 5 * dir)}" stroke="${DIM}" stroke-width="0.8" fill="none"/>`,
+      `<line x1="${f(x1)}" y1="${f(yDim)}" x2="${f(x2)}" y2="${f(yDim)}" stroke="${DIM}" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>`,
+      `<text x="${f((x1 + x2) / 2)}" y="${f(yDim - 4)}" font-size="12" font-weight="bold" fill="${DIM}" text-anchor="middle">${val}</text>`
+    );
+  };
+
+  const dimV = (y1: number, y2: number, xFrom: number, xDim: number, val: number | string) => {
+    const dir = xDim > xFrom ? 1 : -1;
+    out.push(
+      `<path d="M${f(xFrom + 2 * dir)},${f(y1)}H${f(xDim + 5 * dir)}M${f(xFrom + 2 * dir)},${f(y2)}H${f(xDim + 5 * dir)}" stroke="${DIM}" stroke-width="0.8" fill="none"/>`,
+      `<line x1="${f(xDim)}" y1="${f(y1)}" x2="${f(xDim)}" y2="${f(y2)}" stroke="${DIM}" stroke-width="1" marker-start="url(#ar)" marker-end="url(#ar)"/>`,
+      `<text x="${f(xDim - 4)}" y="${f((y1 + y2) / 2 + 4)}" font-size="12" font-weight="bold" fill="${DIM}" text-anchor="end" transform="rotate(-90 ${f(xDim - 4)} ${f((y1 + y2) / 2 + 4)})">${val}</text>`
+    );
+  };
+
+  // Helper vẽ mặt đất có gạch chéo
+  const drawGround = (x: number, y: number, w: number) => {
+    out.push(
+      `<line x1="${f(x - 30)}" y1="${f(y)}" x2="${f(x + w + 30)}" y2="${f(y)}" stroke="${LINE}" stroke-width="1.8"/>`,
+      `<rect x="${f(x - 30)}" y="${f(y)}" width="${f(w + 60)}" height="16" fill="url(#ghatch)"/>`
+    );
+  };
+
+  // ---------------------------------------------------------------------------
+  // 1. VẼ MẶT ĐỨNG CÓ CÁNH (BÊN TRÁI)
+  // ---------------------------------------------------------------------------
+  drawGround(X1, Y1_bottom, cW);
+
+  // Len chân đáy tủ (cao hBase)
+  const yBaseTop1 = Y1_bottom - hBase * scale;
+  out.push(
+    `<rect x="${f(X1)}" y="${f(yBaseTop1)}" width="${f(cW)}" height="${f(hBase * scale)}" fill="#f8fafc" stroke="${LINE}" stroke-width="1.6"/>`
+  );
+
+  // Phào nóc đỉnh tủ (cao hTop)
+  const yTopBot1 = Y1 + hTop * scale;
+  out.push(
+    `<rect x="${f(X1)}" y="${f(Y1)}" width="${f(cW)}" height="${f(hTop * scale)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+
+  // Khung ngoài thân tủ
+  out.push(
+    `<rect x="${f(X1)}" y="${f(yTopBot1)}" width="${f(Lcab * scale)}" height="${f((H - hTop - hBase) * scale)}" fill="#ffffff" stroke="${LINE}" stroke-width="2.2"/>`
+  );
+
+  // Đường phân cách 2 buồng chính
+  const xMid1 = X1 + W1 * scale;
+  out.push(
+    `<line x1="${f(xMid1)}" y1="${f(yTopBot1)}" x2="${f(xMid1)}" y2="${f(yBaseTop1)}" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+
+  // Cánh lật nóc 2 buồng
+  const yFlipBot1 = yTopBot1 + hFlip * scale;
+  out.push(
+    `<line x1="${f(X1)}" y1="${f(yFlipBot1)}" x2="${f(X1 + Lcab * scale)}" y2="${f(yFlipBot1)}" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+
+  // Ô cánh lật trái
+  out.push(
+    `<rect x="${f(X1 + 4)}" y="${f(yTopBot1 + 4)}" width="${f(W1 * scale - 8)}" height="${f(hFlip * scale - 8)}" fill="#fafafa" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<rect x="${f(X1 + 10)}" y="${f(yTopBot1 + 10)}" width="${f(W1 * scale - 20)}" height="${f(hFlip * scale - 20)}" fill="none" stroke="#94a3b8" stroke-width="0.8"/>`,
+    `<text x="${f(X1 + (W1 * scale) / 2)}" y="${f(yTopBot1 + (hFlip * scale) / 2 + 5)}" font-size="12" font-weight="bold" fill="#334155" text-anchor="middle">CÁNH LẬT</text>`
+  );
+
+  // Ô cánh lật phải
+  out.push(
+    `<rect x="${f(xMid1 + 4)}" y="${f(yTopBot1 + 4)}" width="${f(W2 * scale - 8)}" height="${f(hFlip * scale - 8)}" fill="#fafafa" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<rect x="${f(xMid1 + 10)}" y="${f(yTopBot1 + 10)}" width="${f(W2 * scale - 20)}" height="${f(hFlip * scale - 20)}" fill="none" stroke="#94a3b8" stroke-width="0.8"/>`,
+    `<text x="${f(xMid1 + (W2 * scale) / 2)}" y="${f(yTopBot1 + (hFlip * scale) / 2 + 5)}" font-size="12" font-weight="bold" fill="#334155" text-anchor="middle">CÁNH LẬT</text>`
+  );
+
+  // BUỒNG TRÁI: 2 CÁNH MỞ DÀI
+  const xDoorLeftSplit = X1 + wd1 * scale;
+  const hDoorLeftPx = (hMain) * scale;
+  out.push(
+    `<line x1="${f(xDoorLeftSplit)}" y1="${f(yFlipBot1)}" x2="${f(xDoorLeftSplit)}" y2="${f(yBaseTop1)}" stroke="${LINE}" stroke-width="1.5"/>`
+  );
+
+  // Cánh trái 1
+  out.push(
+    `<rect x="${f(X1 + 4)}" y="${f(yFlipBot1 + 4)}" width="${f(wd1 * scale - 8)}" height="${f(hDoorLeftPx - 8)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<rect x="${f(X1 + 10)}" y="${f(yFlipBot1 + 10)}" width="${f(wd1 * scale - 20)}" height="${f(hDoorLeftPx - 20)}" fill="none" stroke="#94a3b8" stroke-width="0.8"/>`,
+    // Nét đứt thể hiện chiều mở cánh (bản lề bên trái, mở về giữa)
+    `<path d="M${f(X1 + 4)},${f(yFlipBot1 + 4)} L${f(xDoorLeftSplit - 4)},${f(yFlipBot1 + hDoorLeftPx / 2)} L${f(X1 + 4)},${f(yBaseTop1 - 4)}" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6 3"/>`,
+    // Tay nắm cánh trái
+    `<rect x="${f(xDoorLeftSplit - 8)}" y="${f(yFlipBot1 + hDoorLeftPx / 2 - 25)}" width="3" height="50" rx="1.5" fill="#0f172a"/>`
+  );
+
+  // Cánh trái 2
+  out.push(
+    `<rect x="${f(xDoorLeftSplit + 4)}" y="${f(yFlipBot1 + 4)}" width="${f(wd1 * scale - 8)}" height="${f(hDoorLeftPx - 8)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<rect x="${f(xDoorLeftSplit + 10)}" y="${f(yFlipBot1 + 10)}" width="${f(wd1 * scale - 20)}" height="${f(hDoorLeftPx - 20)}" fill="none" stroke="#94a3b8" stroke-width="0.8"/>`,
+    // Nét đứt mở cánh (bản lề bên phải)
+    `<path d="M${f(xMid1 - 4)},${f(yFlipBot1 + 4)} L${f(xDoorLeftSplit + 4)},${f(yFlipBot1 + hDoorLeftPx / 2)} L${f(xMid1 - 4)},${f(yBaseTop1 - 4)}" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6 3"/>`,
+    // Tay nắm cánh phải
+    `<rect x="${f(xDoorLeftSplit + 5)}" y="${f(yFlipBot1 + hDoorLeftPx / 2 - 25)}" width="3" height="50" rx="1.5" fill="#0f172a"/>`
+  );
+
+  // Nhãn chữ buồng trái
+  out.push(
+    `<text x="${f(X1 + (W1 * scale) / 2)}" y="${f(yFlipBot1 + hDoorLeftPx / 2 - 8)}" font-size="11" font-weight="bold" fill="#334155" text-anchor="middle">2 CÁNH MỞ</text>`,
+    `<text x="${f(X1 + (W1 * scale) / 2)}" y="${f(yFlipBot1 + hDoorLeftPx / 2 + 8)}" font-size="10" fill="#64748b" text-anchor="middle">MÀU TRẮNG</text>`
+  );
+
+  // BUỒNG PHẢI TRÊN: 2 CÁNH MỞ NGẮN
+  const yDrawersTop1 = yBaseTop1 - hDrawers * scale;
+  const xDoorRightSplit = xMid1 + wd2 * scale;
+  const hDoorRightPx = hRdoor * scale;
+  out.push(
+    `<line x1="${f(xMid1)}" y1="${f(yDrawersTop1)}" x2="${f(X1 + Lcab * scale)}" y2="${f(yDrawersTop1)}" stroke="${LINE}" stroke-width="1.8"/>`,
+    `<line x1="${f(xDoorRightSplit)}" y1="${f(yFlipBot1)}" x2="${f(xDoorRightSplit)}" y2="${f(yDrawersTop1)}" stroke="${LINE}" stroke-width="1.5"/>`
+  );
+
+  // Cánh phải 1
+  out.push(
+    `<rect x="${f(xMid1 + 4)}" y="${f(yFlipBot1 + 4)}" width="${f(wd2 * scale - 8)}" height="${f(hDoorRightPx - 8)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<rect x="${f(xMid1 + 10)}" y="${f(yFlipBot1 + 10)}" width="${f(wd2 * scale - 20)}" height="${f(hDoorRightPx - 20)}" fill="none" stroke="#94a3b8" stroke-width="0.8"/>`,
+    `<path d="M${f(xMid1 + 4)},${f(yFlipBot1 + 4)} L${f(xDoorRightSplit - 4)},${f(yFlipBot1 + hDoorRightPx / 2)} L${f(xMid1 + 4)},${f(yDrawersTop1 - 4)}" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6 3"/>`,
+    `<rect x="${f(xDoorRightSplit - 8)}" y="${f(yFlipBot1 + hDoorRightPx / 2 - 25)}" width="3" height="50" rx="1.5" fill="#0f172a"/>`
+  );
+
+  // Cánh phải 2
+  const xCabRightEdge1 = X1 + Lcab * scale;
+  out.push(
+    `<rect x="${f(xDoorRightSplit + 4)}" y="${f(yFlipBot1 + 4)}" width="${f(wd2 * scale - 8)}" height="${f(hDoorRightPx - 8)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<rect x="${f(xDoorRightSplit + 10)}" y="${f(yFlipBot1 + 10)}" width="${f(wd2 * scale - 20)}" height="${f(hDoorRightPx - 20)}" fill="none" stroke="#94a3b8" stroke-width="0.8"/>`,
+    `<path d="M${f(xCabRightEdge1 - 4)},${f(yFlipBot1 + 4)} L${f(xDoorRightSplit + 4)},${f(yFlipBot1 + hDoorRightPx / 2)} L${f(xCabRightEdge1 - 4)},${f(yDrawersTop1 - 4)}" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6 3"/>`,
+    `<rect x="${f(xDoorRightSplit + 5)}" y="${f(yFlipBot1 + hDoorRightPx / 2 - 25)}" width="3" height="50" rx="1.5" fill="#0f172a"/>`
+  );
+
+  out.push(
+    `<text x="${f(xMid1 + (W2 * scale) / 2)}" y="${f(yFlipBot1 + hDoorRightPx / 2 - 8)}" font-size="11" font-weight="bold" fill="#334155" text-anchor="middle">2 CÁNH MỞ</text>`,
+    `<text x="${f(xMid1 + (W2 * scale) / 2)}" y="${f(yFlipBot1 + hDoorRightPx / 2 + 8)}" font-size="10" fill="#64748b" text-anchor="middle">MÀU TRẮNG</text>`
+  );
+
+  // BUỒNG PHẢI DƯỚI: 4 NGĂN KÉO (2 cột x 2 hàng)
+  const yDrawerMid1 = yDrawersTop1 + hDrawerRow * scale;
+  out.push(
+    `<line x1="${f(xMid1)}" y1="${f(yDrawerMid1)}" x2="${f(xCabRightEdge1)}" y2="${f(yDrawerMid1)}" stroke="${LINE}" stroke-width="1.5"/>`,
+    `<line x1="${f(xDoorRightSplit)}" y1="${f(yDrawersTop1)}" x2="${f(xDoorRightSplit)}" y2="${f(yBaseTop1)}" stroke="${LINE}" stroke-width="1.5"/>`
+  );
+
+  const drawOneDrawer1 = (x: number, y: number, w: number, h: number) => {
+    out.push(
+      `<rect x="${f(x + 3)}" y="${f(y + 3)}" width="${f(w - 6)}" height="${f(h - 6)}" fill="#fafafa" stroke="${LINE}" stroke-width="1.2"/>`,
+      `<rect x="${f(x + 7)}" y="${f(y + 7)}" width="${f(w - 14)}" height="${f(h - 14)}" fill="none" stroke="#94a3b8" stroke-width="0.8"/>`,
+      `<rect x="${f(x + w / 2 - 22)}" y="${f(y + h / 2 - 2)}" width="44" height="4" rx="2" fill="#0f172a"/>`,
+      `<text x="${f(x + w / 2)}" y="${f(y + h / 2 - 6)}" font-size="9.5" font-weight="bold" fill="#475569" text-anchor="middle">NGĂN KÉO</text>`
+    );
+  };
+  drawOneDrawer1(xMid1, yDrawersTop1, wd2 * scale, hDrawerRow * scale);
+  drawOneDrawer1(xDoorRightSplit, yDrawersTop1, wd2 * scale, hDrawerRow * scale);
+  drawOneDrawer1(xMid1, yDrawerMid1, wd2 * scale, (yBaseTop1 - yDrawerMid1));
+  drawOneDrawer1(xDoorRightSplit, yDrawerMid1, wd2 * scale, (yBaseTop1 - yDrawerMid1));
+
+  // KỆ GÓC BÊN PHẢI (5 đợt hở)
+  const xShelfRight1 = X1 + cW;
+  out.push(
+    `<rect x="${f(xCabRightEdge1)}" y="${f(yTopBot1)}" width="${f(S * scale)}" height="${f((H - hTop - hBase) * scale)}" fill="#fdfdfd" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+  // 5 đợt kệ ngang
+  const shelfSpacing = Math.round((H - hTop - hBase) / 5);
+  for (let i = 1; i <= 4; i++) {
+    const ySh = yTopBot1 + i * shelfSpacing * scale;
+    out.push(
+      `<rect x="${f(xCabRightEdge1)}" y="${f(ySh)}" width="${f(S * scale)}" height="${f(T * scale)}" fill="#f1f5f9" stroke="${LINE}" stroke-width="1.4"/>`
+    );
+  }
+
+  // Tiêu đề Mặt đứng
+  out.push(
+    `<text x="${f(X1 + cW / 2)}" y="${f(Y1_bottom + 42)}" font-size="16" font-weight="900" fill="${LINE}" text-anchor="middle" letter-spacing="1">MẶT ĐỨNG</text>`,
+    `<line x1="${f(X1 + cW / 2 - 60)}" y1="${f(Y1_bottom + 48)}" x2="${f(X1 + cW / 2 + 60)}" y2="${f(Y1_bottom + 48)}" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+
+  // Ký hiệu trục cắt 1-1 và A-A
+  out.push(
+    `<g stroke="${RED}" stroke-width="1.5">`,
+    `<line x1="${f(X1 + (W1 * scale) / 2)}" y1="${f(Y1 - 50)}" x2="${f(X1 + (W1 * scale) / 2)}" y2="${f(Y1_bottom + 25)}" stroke-dasharray="12 4 3 4"/>`,
+    `<circle cx="${f(X1 + (W1 * scale) / 2)}" cy="${f(Y1 - 50)}" r="10" fill="#ffffff"/>`,
+    `<text x="${f(X1 + (W1 * scale) / 2)}" y="${f(Y1 - 46)}" font-size="12" font-weight="bold" fill="${RED}" text-anchor="middle" stroke="none">1</text>`,
+    `<line x1="${f(X1 - 25)}" y1="${f(Y1_bottom - (hBase + hDrawers) * scale)}" x2="${f(xShelfRight1 + 25)}" y2="${f(Y1_bottom - (hBase + hDrawers) * scale)}" stroke-dasharray="12 4 3 4"/>`,
+    `<circle cx="${f(X1 - 25)}" cy="${f(Y1_bottom - (hBase + hDrawers) * scale)}" r="10" fill="#ffffff"/>`,
+    `<text x="${f(X1 - 25)}" y="${f(Y1_bottom - (hBase + hDrawers) * scale + 4)}" font-size="12" font-weight="bold" fill="${RED}" text-anchor="middle" stroke="none">A</text>`,
+    `<circle cx="${f(xShelfRight1 + 25)}" cy="${f(Y1_bottom - (hBase + hDrawers) * scale)}" r="10" fill="#ffffff"/>`,
+    `<text x="${f(xShelfRight1 + 25)}" y="${f(Y1_bottom - (hBase + hDrawers) * scale + 4)}" font-size="12" font-weight="bold" fill="${RED}" text-anchor="middle" stroke="none">A</text>`,
+    `</g>`
+  );
+
+  // Đường kích thước Mặt đứng (có cánh)
+  // Chuỗi kích thước trên đỉnh (Module)
+  dimH(X1, xMid1, Y1, Y1 - 25, W1);
+  dimH(xMid1, xCabRightEdge1, Y1, Y1 - 25, W2);
+  dimH(xCabRightEdge1, xShelfRight1, Y1, Y1 - 25, S);
+  dimH(X1, xShelfRight1, Y1, Y1 - 65, L);
+
+  // Chuỗi kích thước dưới đáy (Chi tiết cánh)
+  dimH(X1, xDoorLeftSplit, Y1_bottom, Y1_bottom + 22, wd1);
+  dimH(xDoorLeftSplit, xMid1, Y1_bottom, Y1_bottom + 22, wd1);
+  dimH(xMid1, xDoorRightSplit, Y1_bottom, Y1_bottom + 22, wd2);
+  dimH(xDoorRightSplit, xCabRightEdge1, Y1_bottom, Y1_bottom + 22, wd2);
+  dimH(xCabRightEdge1, xShelfRight1, Y1_bottom, Y1_bottom + 22, S);
+  dimH(X1, xShelfRight1, Y1_bottom, Y1_bottom + 52, L);
+
+  // Chuỗi kích thước cao độ bên trái
+  dimV(Y1, yTopBot1, X1, X1 - 25, hTop);
+  dimV(yTopBot1, yFlipBot1, X1, X1 - 25, hFlip);
+  dimV(yFlipBot1, yBaseTop1, X1, X1 - 25, hMain);
+  dimV(yBaseTop1, Y1_bottom, X1, X1 - 25, hBase);
+  dimV(Y1, Y1_bottom, X1, X1 - 65, H);
+
+  // Chuỗi kích thước đợt bên phải
+  const shRightY0 = yTopBot1;
+  dimV(Y1, yTopBot1, xShelfRight1, xShelfRight1 + 25, hTop);
+  for (let i = 0; i < 4; i++) {
+    dimV(shRightY0 + i * shelfSpacing * scale, shRightY0 + (i + 1) * shelfSpacing * scale, xShelfRight1, xShelfRight1 + 25, shelfSpacing);
+  }
+  dimV(shRightY0 + 4 * shelfSpacing * scale, yBaseTop1, xShelfRight1, xShelfRight1 + 25, shelfSpacing);
+  dimV(yBaseTop1, Y1_bottom, xShelfRight1, xShelfRight1 + 25, hBase);
+  dimV(Y1, Y1_bottom, xShelfRight1, xShelfRight1 + 65, H);
+
+  // ---------------------------------------------------------------------------
+  // 2. VẼ MẶT ĐỨNG BỎ CÁNH (KẾT CẤU BÊN TRONG - BÊN PHẢI)
+  // ---------------------------------------------------------------------------
+  drawGround(X2, Y2_bottom, cW);
+
+  // Len chân đáy
+  out.push(
+    `<rect x="${f(X2)}" y="${f(Y2_bottom - hBase * scale)}" width="${f(cW)}" height="${f(hBase * scale)}" fill="#f1f5f9" stroke="${LINE}" stroke-width="1.6"/>`
+  );
+
+  // Phào nóc
+  out.push(
+    `<rect x="${f(X2)}" y="${f(Y2)}" width="${f(cW)}" height="${f(hTop * scale)}" fill="#ffffff" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+
+  // Thân thùng tủ
+  const yInnerTop2 = Y2 + hTop * scale;
+  const yInnerBot2 = Y2_bottom - hBase * scale;
+  const hInnerTotal2 = yInnerBot2 - yInnerTop2;
+  const xCabRightEdge2 = X2 + Lcab * scale;
+  const xShelfRight2 = X2 + cW;
+
+  out.push(
+    `<rect x="${f(X2)}" y="${f(yInnerTop2)}" width="${f(Lcab * scale)}" height="${f(hInnerTotal2)}" fill="#ffffff" stroke="${LINE}" stroke-width="2.2"/>`
+  );
+
+  // Các vách đứng gỗ dày T:
+  // 1. Hồi trái ngoài cùng
+  out.push(`<rect x="${f(X2)}" y="${f(yInnerTop2)}" width="${f(T * scale)}" height="${f(hInnerTotal2)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`);
+  // 2. Vách ngăn giữa 2 buồng
+  const xMidVach2 = X2 + W1 * scale - (T / 2) * scale;
+  out.push(`<rect x="${f(xMidVach2)}" y="${f(yInnerTop2)}" width="${f(T * scale)}" height="${f(hInnerTotal2)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`);
+  // 3. Vách ngăn kệ góc
+  out.push(`<rect x="${f(xCabRightEdge2 - T * scale)}" y="${f(yInnerTop2)}" width="${f(T * scale)}" height="${f(hInnerTotal2)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`);
+  // 4. Hồi ngoài kệ góc
+  out.push(`<rect x="${f(xShelfRight2 - T * scale)}" y="${f(yInnerTop2)}" width="${f(T * scale)}" height="${f(hInnerTotal2)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`);
+
+  // Đợt ngang nóc chia khoang nóc để vali
+  const yLuggageDot2 = yInnerTop2 + hLuggage * scale;
+  out.push(
+    `<rect x="${f(X2 + T * scale)}" y="${f(yLuggageDot2)}" width="${f((W1 - 1.5 * T) * scale)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<rect x="${f(xMidVach2 + T * scale)}" y="${f(yLuggageDot2)}" width="${f((W2 - 1.5 * T) * scale)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`
+  );
+
+  // BUỒNG TRÁI:
+  // Suốt treo quần áo dài (cao hHanging)
+  const yRodLeft2 = yLuggageDot2 + T * scale + 60 * scale;
+  const wRodLeft2 = (W1 - 1.5 * T) * scale;
+  out.push(
+    // Pát đỡ 2 đầu
+    `<rect x="${f(X2 + T * scale)}" y="${f(yRodLeft2 - 4)}" width="6" height="18" fill="#475569"/>`,
+    `<rect x="${f(xMidVach2 - 6)}" y="${f(yRodLeft2 - 4)}" width="6" height="18" fill="#475569"/>`,
+    // Thanh suốt treo Inox
+    `<rect x="${f(X2 + T * scale + 6)}" y="${f(yRodLeft2)}" width="${f(wRodLeft2 - 12)}" height="10" rx="3" fill="#94a3b8" stroke="#475569" stroke-width="0.8"/>`,
+    `<text x="${f(X2 + T * scale + wRodLeft2 / 2)}" y="${f(yRodLeft2 + 25)}" font-size="11" font-weight="bold" fill="#0369a1" text-anchor="middle">Thanh treo quần áo</text>`
+  );
+
+  // Đợt giữa buồng trái (dưới suốt treo hHanging)
+  const yMidDotLeft2 = yLuggageDot2 + T * scale + hHanging * scale;
+  out.push(
+    `<rect x="${f(X2 + T * scale)}" y="${f(yMidDotLeft2)}" width="${f(wRodLeft2)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`
+  );
+
+  // Đợt đáy buồng trái (dưới đợt giữa hCompartmentMid)
+  const yBotDotLeft2 = yMidDotLeft2 + T * scale + hCompartmentMid * scale;
+  out.push(
+    `<rect x="${f(X2 + T * scale)}" y="${f(yBotDotLeft2)}" width="${f(wRodLeft2)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`
+  );
+
+  // BUỒNG PHẢI:
+  // Suốt treo quần áo ngắn (cao hHanging)
+  const xRodRightStart2 = xMidVach2 + T * scale;
+  const wRodRight2 = (W2 - 1.5 * T) * scale;
+  out.push(
+    `<rect x="${f(xRodRightStart2)}" y="${f(yRodLeft2 - 4)}" width="6" height="18" fill="#475569"/>`,
+    `<rect x="${f(xCabRightEdge2 - T * scale - 6)}" y="${f(yRodLeft2 - 4)}" width="6" height="18" fill="#475569"/>`,
+    `<rect x="${f(xRodRightStart2 + 6)}" y="${f(yRodLeft2)}" width="${f(wRodRight2 - 12)}" height="10" rx="3" fill="#94a3b8" stroke="#475569" stroke-width="0.8"/>`,
+    `<text x="${f(xRodRightStart2 + wRodRight2 / 2)}" y="${f(yRodLeft2 + 25)}" font-size="11" font-weight="bold" fill="#0369a1" text-anchor="middle">Thanh treo quần áo</text>`
+  );
+
+  // Đợt ngang nóc cụm ngăn kéo
+  const yDrawersDeck2 = yLuggageDot2 + T * scale + hHanging * scale;
+  out.push(
+    `<rect x="${f(xRodRightStart2)}" y="${f(yDrawersDeck2)}" width="${f(wRodRight2)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`
+  );
+
+  // Vách dọc giữa chia 2 cột ngăn kéo
+  const hDrawersInternal2 = yInnerBot2 - (yDrawersDeck2 + T * scale);
+  const xDrawerMidCol2 = xRodRightStart2 + wRodRight2 / 2 - (T / 2) * scale;
+  out.push(
+    `<rect x="${f(xDrawerMidCol2)}" y="${f(yDrawersDeck2 + T * scale)}" width="${f(T * scale)}" height="${f(hDrawersInternal2)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`
+  );
+
+  // Đợt ngang chia hàng ngăn kéo
+  const yDrawerMidRow2 = yDrawersDeck2 + T * scale + hDrawersInternal2 / 2;
+  out.push(
+    `<rect x="${f(xRodRightStart2)}" y="${f(yDrawerMidRow2)}" width="${f(wRodRight2)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.2"/>`
+  );
+
+  // Vẽ 4 hộp ngăn kéo chi tiết (với ray trượt bi 2 bên)
+  const drawOneInternalDrawer2 = (x: number, y: number, w: number, h: number) => {
+    out.push(
+      // Ray trượt bi 2 bên
+      `<line x1="${f(x)}" y1="${f(y + h / 2)}" x2="${f(x + 5)}" y2="${f(y + h / 2)}" stroke="#64748b" stroke-width="2"/>`,
+      `<line x1="${f(x + w - 5)}" y1="${f(y + h / 2)}" x2="${f(x + w)}" y2="${f(y + h / 2)}" stroke="#64748b" stroke-width="2"/>`,
+      // Hộp ngăn kéo
+      `<rect x="${f(x + 6)}" y="${f(y + 3)}" width="${f(w - 12)}" height="${f(h - 6)}" fill="#f8fafc" stroke="${LINE}" stroke-width="1.4"/>`,
+      `<rect x="${f(x + w / 2 - 20)}" y="${f(y + h / 2 - 2)}" width="40" height="4" rx="2" fill="#0f172a"/>`,
+      `<text x="${f(x + w / 2)}" y="${f(y + h / 2 - 6)}" font-size="9" font-weight="bold" fill="#334155" text-anchor="middle">NGĂN KÉO</text>`
+    );
+  };
+  const wDrawerBox2 = (wRodRight2 - T * scale) / 2;
+  const hDrawerBox2 = (hDrawersInternal2 - T * scale) / 2;
+  drawOneInternalDrawer2(xRodRightStart2, yDrawersDeck2 + T * scale, wDrawerBox2, hDrawerBox2);
+  drawOneInternalDrawer2(xDrawerMidCol2 + T * scale, yDrawersDeck2 + T * scale, wDrawerBox2, hDrawerBox2);
+  drawOneInternalDrawer2(xRodRightStart2, yDrawerMidRow2 + T * scale, wDrawerBox2, hDrawerBox2);
+  drawOneInternalDrawer2(xDrawerMidCol2 + T * scale, yDrawerMidRow2 + T * scale, wDrawerBox2, hDrawerBox2);
+
+  // Kệ hở bên phải (5 đợt hở)
+  out.push(
+    `<rect x="${f(xCabRightEdge2)}" y="${f(yInnerTop2)}" width="${f(S * scale)}" height="${f(hInnerTotal2)}" fill="#fdfdfd" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+  for (let i = 1; i <= 4; i++) {
+    const ySh = yInnerTop2 + i * shelfSpacing * scale;
+    out.push(
+      `<rect x="${f(xCabRightEdge2)}" y="${f(ySh)}" width="${f(S * scale)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1.4"/>`
+    );
+  }
+
+  // Tiêu đề Mặt đứng bỏ cánh
+  out.push(
+    `<text x="${f(X2 + cW / 2)}" y="${f(Y2_bottom + 42)}" font-size="16" font-weight="900" fill="${LINE}" text-anchor="middle" letter-spacing="1">MẶT ĐỨNG BỎ CÁNH</text>`,
+    `<line x1="${f(X2 + cW / 2 - 90)}" y1="${f(Y2_bottom + 48)}" x2="${f(X2 + cW / 2 + 90)}" y2="${f(Y2_bottom + 48)}" stroke="${LINE}" stroke-width="1.8"/>`
+  );
+
+  // Kích thước Mặt đứng bỏ cánh
+  // Trên đỉnh
+  dimH(X2, X2 + T * scale, Y2, Y2 - 25, T);
+  dimH(X2 + T * scale, xMidVach2, Y2, Y2 - 25, Math.round(inW1));
+  dimH(xMidVach2, xMidVach2 + T * scale, Y2, Y2 - 25, T);
+  dimH(xMidVach2 + T * scale, xCabRightEdge2 - T * scale, Y2, Y2 - 25, Math.round(inW2));
+  dimH(xCabRightEdge2 - T * scale, xCabRightEdge2, Y2, Y2 - 25, T);
+  dimH(xCabRightEdge2, xShelfRight2, Y2, Y2 - 25, S);
+  dimH(X2, xShelfRight2, Y2, Y2 - 65, L);
+
+  // Dưới đáy (kích thước chi tiết ngăn kéo)
+  dimH(X2, X2 + T * scale, Y2_bottom, Y2_bottom + 22, T);
+  dimH(X2 + T * scale, xMidVach2, Y2_bottom, Y2_bottom + 22, Math.round(inW1));
+  dimH(xMidVach2, xMidVach2 + T * scale, Y2_bottom, Y2_bottom + 22, T);
+  dimH(xMidVach2 + T * scale, xDrawerMidCol2, Y2_bottom, Y2_bottom + 22, drawerW);
+  dimH(xDrawerMidCol2, xDrawerMidCol2 + T * scale, Y2_bottom, Y2_bottom + 22, T);
+  dimH(xDrawerMidCol2 + T * scale, xCabRightEdge2 - T * scale, Y2_bottom, Y2_bottom + 22, drawerW);
+  dimH(xCabRightEdge2 - T * scale, xCabRightEdge2, Y2_bottom, Y2_bottom + 22, T);
+  dimH(xCabRightEdge2, xShelfRight2, Y2_bottom, Y2_bottom + 22, S);
+  dimH(X2, xShelfRight2, Y2_bottom, Y2_bottom + 52, L);
+
+  // Cao độ khoang bên trái của hình bỏ cánh
+  dimV(Y2, yInnerTop2, X2, X2 - 25, hTop);
+  dimV(yInnerTop2, yLuggageDot2, X2, X2 - 25, hLuggage);
+  dimV(yLuggageDot2, yLuggageDot2 + T * scale, X2, X2 - 25, T);
+  dimV(yLuggageDot2 + T * scale, yMidDotLeft2, X2, X2 - 25, hHanging);
+  dimV(yMidDotLeft2, yMidDotLeft2 + T * scale, X2, X2 - 25, T);
+  dimV(yMidDotLeft2 + T * scale, yBotDotLeft2, X2, X2 - 25, hCompartmentMid);
+  dimV(yBotDotLeft2, yBotDotLeft2 + T * scale, X2, X2 - 25, T);
+  dimV(yBotDotLeft2 + T * scale, yInnerBot2, X2, X2 - 25, hCompartmentBot);
+  dimV(yInnerBot2, Y2_bottom, X2, X2 - 25, hBase);
+  dimV(Y2, Y2_bottom, X2, X2 - 65, H);
+
+  // ---------------------------------------------------------------------------
+  // 3. MẶT BẰNG CẮT A-A (PHÍA DƯỚI BÊN TRÁI)
+  // ---------------------------------------------------------------------------
+  const X_plan = X1;
+  const Y_plan = 1080;
+  const H_plan = D * scale;
+
+  out.push(
+    // Khung bao mặt bằng
+    `<rect x="${f(X_plan)}" y="${f(Y_plan)}" width="${f(cW)}" height="${f(H_plan)}" fill="#ffffff" stroke="${LINE}" stroke-width="2"/>`,
+    // Tấm hậu tủ phía sau
+    `<rect x="${f(X_plan)}" y="${f(Y_plan)}" width="${f(cW)}" height="${f(T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1"/>`,
+    // Vách hồi trái
+    `<rect x="${f(X_plan)}" y="${f(Y_plan + T * scale)}" width="${f(T * scale)}" height="${f(H_plan - T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1"/>`,
+    // Vách giữa
+    `<rect x="${f(X_plan + W1 * scale - (T / 2) * scale)}" y="${f(Y_plan + T * scale)}" width="${f(T * scale)}" height="${f(H_plan - T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1"/>`,
+    // Vách ngăn kệ góc
+    `<rect x="${f(X_plan + Lcab * scale - T * scale)}" y="${f(Y_plan + T * scale)}" width="${f(T * scale)}" height="${f(H_plan - T * scale)}" fill="#cbd5e1" stroke="${LINE}" stroke-width="1"/>`,
+    // Đường cong bo góc kệ ngoài bên phải
+    `<path d="M${f(X_plan + Lcab * scale)},${f(Y_plan + H_plan)} Q${f(X_plan + cW)},${f(Y_plan + H_plan)} ${f(X_plan + cW)},${f(Y_plan)}" fill="none" stroke="${LINE}" stroke-width="1.8"/>`,
+    // Thanh suốt treo Inox cắt tròn
+    `<circle cx="${f(X_plan + (W1 * scale) / 2)}" cy="${f(Y_plan + H_plan / 2)}" r="6" fill="#94a3b8" stroke="#0f172a" stroke-width="1.2"/>`,
+    `<circle cx="${f(X_plan + W1 * scale + (W2 * scale) / 2)}" cy="${f(Y_plan + H_plan / 2)}" r="6" fill="#94a3b8" stroke="#0f172a" stroke-width="1.2"/>`,
+    // Kích thước chiều sâu
+    `<text x="${f(X_plan + cW / 2)}" y="${f(Y_plan + H_plan + 35)}" font-size="14" font-weight="bold" fill="${LINE}" text-anchor="middle">MẶT BẰNG CẮT A-A</text>`
+  );
+  dimV(Y_plan, Y_plan + H_plan, X_plan, X_plan - 25, D);
+  dimH(X_plan, X_plan + cW, Y_plan + H_plan, Y_plan + H_plan + 15, L);
+
+  // ---------------------------------------------------------------------------
+  // 4. KHUNG TÊN BẢN VẼ TIÊU CHUẨN XƯỞNG CNC (PHÍA DƯỚI BÊN PHẢI)
+  // ---------------------------------------------------------------------------
+  const X_tb = X2;
+  const Y_tb = 1080;
+  const W_tb = cW;
+  const H_tb = 190;
+
+  out.push(
+    `<rect x="${f(X_tb)}" y="${f(Y_tb)}" width="${f(W_tb)}" height="${f(H_tb)}" fill="#f8fafc" stroke="${LINE}" stroke-width="2"/>`,
+    // Header
+    `<rect x="${f(X_tb)}" y="${f(Y_tb)}" width="${f(W_tb)}" height="38" fill="#0f2a5c"/>`,
+    `<text x="${f(X_tb + 15)}" y="${f(Y_tb + 24)}" font-size="14" font-weight="900" fill="#ffffff" letter-spacing="1">XƯỞNG CƠ KHÍ &amp; GIA CÔNG NỘI THẤT CNC</text>`,
+    `<text x="${f(X_tb + W_tb - 15)}" y="${f(Y_tb + 24)}" font-size="12" font-weight="bold" fill="#38bdf8" text-anchor="end">TIÊU CHUẨN ISO 9001</text>`,
+    // Tên bản vẽ
+    `<text x="${f(X_tb + 15)}" y="${f(Y_tb + 65)}" font-size="16" font-weight="900" fill="#0f172a">BẢN VẼ THI CÔNG: ${esc(spec.title.toUpperCase())}</text>`,
+    // Bảng thông số kỹ thuật 2 cột
+    `<text x="${f(X_tb + 15)}" y="${f(Y_tb + 95)}" font-size="12" fill="#334155"><tspan font-weight="bold">Quy cách tổng thể:</tspan> Dài ${L} × Sâu ${D} × Cao ${H} mm (Ván dày ${T}mm)</text>`,
+    `<text x="${f(X_tb + 15)}" y="${f(Y_tb + 120)}" font-size="12" fill="#334155"><tspan font-weight="bold">Vật liệu kết cấu:</tspan> ${esc(spec.material)}</text>`,
+    `<text x="${f(X_tb + 15)}" y="${f(Y_tb + 145)}" font-size="12" fill="#334155"><tspan font-weight="bold">Bề mặt hoàn thiện:</tspan> ${esc(spec.finish)}</text>`,
+    `<text x="${f(X_tb + 15)}" y="${f(Y_tb + 170)}" font-size="12" fill="#334155"><tspan font-weight="bold">Phụ kiện kèm theo:</tspan> 2 Suốt treo Inox oval 25mm + 4 Bộ ray trượt bi 3 tầng + Bản lề 304</text>`,
+    // Cột phải khung tên
+    `<line x1="${f(X_tb + W_tb - 220)}" y1="${f(Y_tb + 38)}" x2="${f(X_tb + W_tb - 220)}" y2="${f(Y_tb + H_tb)}" stroke="${LINE}" stroke-width="1.2"/>`,
+    `<text x="${f(X_tb + W_tb - 205)}" y="${f(Y_tb + 65)}" font-size="12" fill="#475569">Mã bản vẽ: <tspan font-weight="bold" fill="#0369a1">${meta.code}</tspan></text>`,
+    `<text x="${f(X_tb + W_tb - 205)}" y="${f(Y_tb + 95)}" font-size="12" fill="#475569">Ngày lập: <tspan font-weight="bold">${meta.date}</tspan></text>`,
+    `<text x="${f(X_tb + W_tb - 205)}" y="${f(Y_tb + 125)}" font-size="12" fill="#475569">Tỷ lệ: <tspan font-weight="bold">1:20 (NTS)</tspan></text>`,
+    `<text x="${f(X_tb + W_tb - 205)}" y="${f(Y_tb + 155)}" font-size="12" fill="#475569">Dung sai: <tspan font-weight="bold">±0.03 mm</tspan></text>`,
+    `</svg>`
+  );
+
+  return out.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// RENDER DXF TỦ QUẦN ÁO TƯƠNG THÍCH AUTOCAD
+// (Xuất 2 mặt đứng + Mặt bằng chuẩn các Layer AutoCAD)
+// ---------------------------------------------------------------------------
+
+function renderWardrobeDxf(spec: CadSpec): string {
+  const { W: rawW, H: rawH, D: rawD } = bounds(spec);
+  const L = Math.max(1200, Math.round(rawW || 2115));
+  const H = Math.max(1500, Math.round(rawH || 2650));
+  const D = Math.max(400, Math.round(rawD || 600));
+
+  // Trích xuất độ dày vách T từ thông số hoặc parts
+  let detectedT = 20;
+  const matchT =
+    (spec.title || "").match(/T=(\d+(?:\.\d+)?)/i) ||
+    (spec.assumptions?.[0] || "").match(/Dày (\d+(?:\.\d+)?)/i);
+  if (matchT) {
+    detectedT = parseFloat(matchT[1]);
+  } else {
+    const thinParts = (spec.parts || []).filter((p) => p.w <= 35 || p.h <= 35 || p.d <= 35);
+    if (thinParts.length > 0) {
+      detectedT = Math.round(
+        thinParts[0].w <= 35 ? thinParts[0].w : thinParts[0].h <= 35 ? thinParts[0].h : thinParts[0].d
+      );
+    }
+  }
+  const T = Math.max(12, Math.min(40, Math.round(detectedT || 20)));
+
+  const S = Math.max(200, Math.min(500, Math.round(L * (300 / 2115))));
+  const Lcab = L - S;
+  const W1 = Math.round(Lcab / 2);
+  const W2 = Lcab - W1;
+  const wd1 = Math.round(W1 / 2);
+  const wd2 = Math.round(W2 / 2);
+
+  const inW1 = W1 - 1.5 * T;
+  const inW2 = W2 - 1.5 * T;
+  const drawerW = Math.round((inW2 - T) / 2);
+
+  const hTop = Math.max(60, Math.min(140, Math.round(H * (100 / 2650))));
+  const hPlinth = Math.max(40, Math.min(80, Math.round(H * (50 / 2650))));
+  const hBase = hPlinth + T; // 70mm
+  const hAvail = H - hTop - hBase;
+  const hLuggage = Math.max(250, Math.min(500, Math.round(hAvail * (370 / 2480))));
+  const hMainBody = hAvail - hLuggage - T;
+  const hHanging = Math.max(800, Math.min(1500, Math.round(hMainBody * (1280 / 2090))));
+  const hLower = hMainBody - hHanging - 2 * T;
+  const hCompartmentMid = Math.max(150, Math.round(hLower * (300 / 770)));
+  const hCompartmentBot = hLower - hCompartmentMid;
+
+  const hFlip = hLuggage + T;
+  const hMain = hMainBody + 2 * T;
+  const hDrawers = hCompartmentMid + hCompartmentBot + 2 * T;
+  const hRdoor = hMain - hDrawers;
+  const hDrawerRow = Math.round(hDrawers / 2);
+
+  const out: string[] = ["0", "SECTION", "2", "ENTITIES"];
+  const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
+
+  const line = (layer: string, x1: number, y1: number, x2: number, y2: number) =>
+    out.push("0", "LINE", "8", layer, "10", n(x1), "20", n(y1), "30", "0", "11", n(x2), "21", n(y2), "31", "0");
+  const rect = (layer: string, x: number, y: number, w: number, h: number) => {
+    line(layer, x, y, x + w, y);
+    line(layer, x + w, y, x + w, y + h);
+    line(layer, x + w, y + h, x, y + h);
+    line(layer, x, y + h, x, y);
+  };
+  const text = (layer: string, x: number, y: number, h: number, s: string) =>
+    out.push("0", "TEXT", "8", layer, "10", n(x), "20", n(y), "30", "0", "40", n(h), "1", toAscii(s));
+
+  const dimH = (layer: string, x1: number, x2: number, y: number, label: string | number) => {
+    const lbl = String(label);
+    line(layer, x1, y, x2, y);
+    line(layer, x1, y - 15, x1, y + 15);
+    line(layer, x2, y - 15, x2, y + 15);
+    text(layer, (x1 + x2) / 2 - lbl.length * 8, y + 15, 25, lbl);
+  };
+
+  const dimV = (layer: string, y1: number, y2: number, x: number, label: string | number) => {
+    const lbl = String(label);
+    line(layer, x, y1, x, y2);
+    line(layer, x - 15, y1, x + 15, y1);
+    line(layer, x - 15, y2, x + 15, y2);
+    text(layer, x - 50, (y1 + y2) / 2, 25, lbl);
+  };
+
+  // 1. ELEVATION 1: MẶT ĐỨNG CÓ CÁNH tại X: 0 -> L, Y: 0 -> H
+  rect("ELEV_DOORS", 0, 0, L, H);
+  rect("ELEV_DOORS", 0, 0, L, hBase);
+  rect("ELEV_DOORS", 0, H - hTop, L, hTop);
+
+  // Cánh lật nóc
+  rect("ELEV_DOORS", 0, H - hTop - hFlip, W1, hFlip);
+  rect("ELEV_DOORS", W1, H - hTop - hFlip, W2, hFlip);
+  text("TEXT", W1 / 2 - 50, H - hTop - hFlip / 2, 28, "CANH LAT");
+  text("TEXT", W1 + W2 / 2 - 50, H - hTop - hFlip / 2, 28, "CANH LAT");
+
+  // Buồng trái 2 cánh mở suốt
+  rect("ELEV_DOORS", 0, hBase, wd1, hMain);
+  rect("ELEV_DOORS", wd1, hBase, wd1, hMain);
+  line("ELEV_SWING", 0, hBase, wd1, hBase + hMain / 2);
+  line("ELEV_SWING", 0, hBase + hMain, wd1, hBase + hMain / 2);
+  line("ELEV_SWING", W1, hBase, wd1, hBase + hMain / 2);
+  line("ELEV_SWING", W1, hBase + hMain, wd1, hBase + hMain / 2);
+  text("TEXT", W1 / 2 - 80, hBase + hMain / 2 - 20, 26, "2 CANH MO MAU TRANG");
+
+  // Buồng phải cánh mở ngắn
+  rect("ELEV_DOORS", W1, hBase + hDrawers, wd2, hRdoor);
+  rect("ELEV_DOORS", W1 + wd2, hBase + hDrawers, wd2, hRdoor);
+  line("ELEV_SWING", W1, hBase + hDrawers, W1 + wd2, hBase + hDrawers + hRdoor / 2);
+  line("ELEV_SWING", W1, hBase + hDrawers + hRdoor, W1 + wd2, hBase + hDrawers + hRdoor / 2);
+  line("ELEV_SWING", Lcab, hBase + hDrawers, W1 + wd2, hBase + hDrawers + hRdoor / 2);
+  line("ELEV_SWING", Lcab, hBase + hDrawers + hRdoor, W1 + wd2, hBase + hDrawers + hRdoor / 2);
+  text("TEXT", W1 + W2 / 2 - 80, hBase + hDrawers + hRdoor / 2 - 20, 26, "2 CANH MO MAU TRANG");
+
+  // Buồng phải: 4 ngăn kéo
+  rect("ELEV_DOORS", W1, hBase, wd2, hDrawerRow);
+  rect("ELEV_DOORS", W1 + wd2, hBase, wd2, hDrawerRow);
+  rect("ELEV_DOORS", W1, hBase + hDrawerRow, wd2, hDrawerRow);
+  rect("ELEV_DOORS", W1 + wd2, hBase + hDrawerRow, wd2, hDrawerRow);
+  text("TEXT", W1 + wd2 / 2 - 40, hBase + hDrawerRow / 2, 20, "NGAN KEO");
+  text("TEXT", W1 + wd2 + wd2 / 2 - 40, hBase + hDrawerRow / 2, 20, "NGAN KEO");
+  text("TEXT", W1 + wd2 / 2 - 40, hBase + hDrawerRow + hDrawerRow / 2, 20, "NGAN KEO");
+  text("TEXT", W1 + wd2 + wd2 / 2 - 40, hBase + hDrawerRow + hDrawerRow / 2, 20, "NGAN KEO");
+
+  // Kệ hở bên phải: 5 đợt
+  const shelfGap = Math.round((H - hTop - hBase) / 5);
+  for (let i = 1; i <= 5; i++) {
+    rect("ELEV_DOORS", Lcab, hBase + i * shelfGap, S, 20);
+  }
+
+  text("TITLE", L / 2 - 80, -120, 45, "MAT DUNG");
+
+  // Đường kích thước Mặt đứng
+  dimH("DIMS", 0, W1, H + 60, W1);
+  dimH("DIMS", W1, Lcab, H + 60, W2);
+  dimH("DIMS", Lcab, L, H + 60, S);
+  dimH("DIMS", 0, L, H + 140, L);
+
+  dimH("DIMS", 0, wd1, -60, wd1);
+  dimH("DIMS", wd1, W1, -60, wd1);
+  dimH("DIMS", W1, W1 + wd2, -60, wd2);
+  dimH("DIMS", W1 + wd2, Lcab, -60, wd2);
+  dimH("DIMS", Lcab, L, -60, S);
+
+  dimV("DIMS", 0, hBase, -60, hBase);
+  dimV("DIMS", hBase, hBase + hMain, -60, hMain);
+  dimV("DIMS", hBase + hMain, H - hTop, -60, hFlip);
+  dimV("DIMS", H - hTop, H, -60, hTop);
+  dimV("DIMS", 0, H, -140, H);
+
+  // 2. ELEVATION 2: MẶT ĐỨNG BỎ CÁNH tại X: L + 500
+  const OX = L + 500;
+  rect("ELEV_INTERIOR", OX, 0, L, H);
+  rect("ELEV_INTERIOR", OX, 0, L, 70);
+  rect("ELEV_INTERIOR", OX, H - hTop, L, hTop);
+
+  // Vách hồi & đợt
+  rect("ELEV_INTERIOR", OX, 70, T, H - hTop - 70);
+  rect("ELEV_INTERIOR", OX + W1 - T / 2, 70, T, H - hTop - 70);
+  rect("ELEV_INTERIOR", OX + Lcab - T, 70, T, H - hTop - 70);
+  rect("ELEV_INTERIOR", OX + L - T, 70, T, H - hTop - 70);
+
+  // Đợt nóc
+  rect("ELEV_INTERIOR", OX, H - hTop - hFlip, Lcab, T);
+
+  // Buồng trái: suốt treo và đợt
+  const inTopY = H - hTop - hFlip;
+  const rodY1 = inTopY - 70;
+  rect("ELEV_INTERIOR", OX + T, rodY1, W1 - 1.5 * T, 25);
+  text("TEXT", OX + T + 50, rodY1 - 35, 25, "Thanh treo quan ao");
+  rect("ELEV_INTERIOR", OX + T, 70 + 470 + T + 300, W1 - 1.5 * T, T);
+  rect("ELEV_INTERIOR", OX + T, 70 + 470, W1 - 1.5 * T, T);
+
+  // Buồng phải: suốt treo và ngăn kéo
+  const rodY2 = inTopY - 70;
+  rect("ELEV_INTERIOR", OX + W1 + T / 2, rodY2, W2 - 1.5 * T, 25);
+  text("TEXT", OX + W1 + T / 2 + 50, rodY2 - 35, 25, "Thanh treo quan ao");
+  rect("ELEV_INTERIOR", OX + W1 + T / 2, 70 + hDrawers, W2 - 1.5 * T, T);
+  rect("ELEV_INTERIOR", OX + W1 + T / 2 + (W2 - 1.5 * T) / 2 - T / 2, 70, T, hDrawers);
+  rect("ELEV_INTERIOR", OX + W1 + T / 2, 70 + hDrawerRow, W2 - 1.5 * T, T);
+
+  // 4 Ngăn kéo bên trong
+  rect("ELEV_INTERIOR", OX + W1 + T / 2 + 5, 75, drawerW - 10, hDrawerRow - 10);
+  rect("ELEV_INTERIOR", OX + W1 + T / 2 + drawerW + 5, 75, drawerW - 10, hDrawerRow - 10);
+  rect("ELEV_INTERIOR", OX + W1 + T / 2 + 5, 75 + hDrawerRow, drawerW - 10, hDrawerRow - 10);
+  rect("ELEV_INTERIOR", OX + W1 + T / 2 + drawerW + 5, 75 + hDrawerRow, drawerW - 10, hDrawerRow - 10);
+  text("TEXT", OX + W1 + T / 2 + 40, 70 + hDrawerRow / 2, 20, "NGAN KEO");
+  text("TEXT", OX + W1 + T / 2 + (W2 - 1.5 * T) / 2 + 40, 70 + hDrawerRow / 2, 20, "NGAN KEO");
+  text("TEXT", OX + W1 + T / 2 + 40, 70 + hDrawerRow + hDrawerRow / 2, 20, "NGAN KEO");
+  text("TEXT", OX + W1 + T / 2 + (W2 - 1.5 * T) / 2 + 40, 70 + hDrawerRow + hDrawerRow / 2, 20, "NGAN KEO");
+
+  // Kệ hở
+  for (let i = 1; i <= 5; i++) {
+    rect("ELEV_INTERIOR", OX + Lcab, 70 + i * shelfGap, S, 20);
+  }
+
+  text("TITLE", OX + L / 2 - 140, -120, 45, "MAT DUNG BO CANH");
+
+  // Kích thước bỏ cánh
+  dimH("DIMS", OX, OX + T, H + 60, T);
+  dimH("DIMS", OX + T, OX + W1 - T / 2, H + 60, Math.round(inW1));
+  dimH("DIMS", OX + W1 - T / 2, OX + W1 + T / 2, H + 60, T);
+  dimH("DIMS", OX + W1 + T / 2, OX + Lcab - T, H + 60, Math.round(inW2));
+  dimH("DIMS", OX + Lcab - T, OX + Lcab, H + 60, T);
+  dimH("DIMS", OX + Lcab, OX + L, H + 60, S);
+  dimH("DIMS", OX, OX + L, H + 140, L);
+
+  dimV("DIMS", 0, hBase, OX - 60, hBase);
+  dimV("DIMS", hBase, hBase + hCompartmentBot, OX - 60, hCompartmentBot);
+  dimV("DIMS", hBase + hCompartmentBot, hBase + hCompartmentBot + T, OX - 60, T);
+  dimV("DIMS", hBase + hCompartmentBot + T, hBase + hCompartmentBot + T + hCompartmentMid, OX - 60, hCompartmentMid);
+  dimV("DIMS", hBase + hCompartmentBot + T + hCompartmentMid, hBase + hCompartmentBot + 2 * T + hCompartmentMid, OX - 60, T);
+  dimV("DIMS", hBase + hCompartmentBot + 2 * T + hCompartmentMid, inTopY, OX - 60, hHanging);
+  dimV("DIMS", inTopY, inTopY + T, OX - 60, T);
+  dimV("DIMS", inTopY + T, H - hTop, OX - 60, hLuggage);
+  dimV("DIMS", H - hTop, H, OX - 60, hTop);
+
+  // 3. MẶT BẰNG CẮT A-A tại Y: -D - 400
+  const OY_plan = -D - 400;
+  rect("PLAN_AA", 0, OY_plan, L, D);
+  rect("PLAN_AA", 0, OY_plan, L, T); // hậu
+  rect("PLAN_AA", 0, OY_plan + T, T, D - T); // hồi trái
+  rect("PLAN_AA", W1 - T / 2, OY_plan + T, T, D - T); // vách giữa
+  rect("PLAN_AA", Lcab - T, OY_plan + T, T, D - T); // vách kệ
+  dimH("DIMS", 0, L, OY_plan - 50, L);
+  dimV("DIMS", OY_plan, OY_plan + D, -50, D);
+  text("TITLE", L / 2 - 90, OY_plan - 110, 40, "MAT BANG CAT A-A");
+
+  out.push("0", "ENDSEC", "0", "EOF");
+  return out.join("\n") + "\n";
+}
+
 export function renderSvg(spec: CadSpec, meta: { date: string; code: string }): string {
+  if (isWardrobeSpec(spec)) {
+    return renderWardrobeSvg(spec, meta);
+  }
   const { W, H, D } = bounds(spec);
   const PW = 1600;
   const PH = 1130;
@@ -420,6 +1233,9 @@ export function renderSvg(spec: CadSpec, meta: { date: string; code: string }): 
 // ---------------------------------------------------------------------------
 
 export function renderDxf(spec: CadSpec): string {
+  if (isWardrobeSpec(spec)) {
+    return renderWardrobeDxf(spec);
+  }
   const { W, H, D } = bounds(spec);
   const gap = Math.max(W, H, D) * 0.35 + 50;
   const th = Math.max(Math.max(W, H, D) / 60, 5); // chiều cao chữ

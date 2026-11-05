@@ -6,6 +6,86 @@ export { DEFAULT_CATEGORIES };
 
 export const INITIAL_PRODUCTS: Omit<ProductItem, "id">[] = [
   {
+    name: "Tủ quần áo 4 cánh có kệ góc đa năng CNC",
+    category: "Tủ áo & Nội thất CNC",
+    description: "Tủ áo kịch trần thiết kế hiện đại 2 buồng lớn kết hợp kệ góc trang trí 5 tầng bo cong mềm mại. Khung thùng gỗ MDF lõi xanh chống ẩm HMR dày 18mm phủ Melamine vân gỗ sồi, mặt cánh sơn bệt trắng chạy rãnh CNC quả trám sang trọng. Trang bị đầy đủ 2 suốt treo Inox oval phi 25mm, 4 ngăn kéo ray bi 3 tầng giảm chấn và khoang chứa chăn màn vali nóc tủ rộng rãi.",
+    dimensions: "2115 × 600 × 2650 mm",
+    material: "Gỗ MDF lõi xanh chống ẩm HMR 20mm phủ Melamine & Cánh sơn bệt trắng CNC",
+    price: 14500000,
+    imageUrl: "/products/tu-ao-canh-mo-hien-dai.jpg",
+    cadImageUrl: "/products/tu-ao-cad-drawing.jpg",
+    baseAiContext: "Tủ quần áo hiện đại kịch trần 2 buồng 4 cánh mở kết hợp kệ góc hở bo cong và hệ 4 ngăn kéo dưới. Kích thước chuẩn bản vẽ: Chiều dài L=2115mm (Kệ góc 300mm, Buồng trái 908mm, Buồng phải 908mm), Chiều rộng sâu W=600mm, Chiều cao H=2650mm, Độ dày vách T=20mm. Khi người dùng thay đổi kích thước L, W, H, T: Tỷ lệ 2 buồng treo đồ và kệ góc co giãn đối xứng toán học, giữ nguyên kết cấu suốt treo Inox, 4 ngăn kéo và đợt nóc chứa vali.",
+    cadTemplate: {
+      title: "Tủ quần áo 4 cánh có kệ góc đa năng CNC",
+      baseDimensions: { length: 2115, width: 600, height: 2650, thickness: 20 },
+      material: "Gỗ MDF lõi xanh chống ẩm HMR 18mm",
+      finish: "Melamine vân gỗ sồi & Cánh sơn bệt trắng CNC quả trám",
+      parts: [
+        // 1. Khung thùng và đế
+        { name: "Len chân đáy tủ", x: 0, y: 0, z: 20, w: 2200, h: 70, d: 560 },
+        { name: "Tấm đáy tủ chính", x: 0, y: 70, z: 0, w: 2200, h: 18, d: 600 },
+        { name: "Tấm nóc tủ chính", x: 0, y: 2606, z: 0, w: 2200, h: 18, d: 600 },
+        { name: "Phào nóc che trần", x: 0, y: 2624, z: 0, w: 2200, h: 26, d: 600 },
+        { name: "Tấm hậu tủ chống ẩm", x: 0, y: 70, z: 582, w: 2200, h: 2536, d: 18 },
+        { name: "Hồi tủ phải ngoài cùng", x: 2182, y: 88, z: 18, w: 18, h: 2518, d: 564 },
+        { name: "Vách ngăn giữa 2 buồng", x: 1251, y: 88, z: 18, w: 18, h: 2518, d: 564 },
+        { name: "Vách ngăn kệ góc và buồng trái", x: 320, y: 88, z: 18, w: 18, h: 2518, d: 564 },
+
+        // 2. Buồng trái (Suốt treo dài + đợt)
+        { name: "Đợt ngang chia khoang nóc trái", x: 338, y: 2218, z: 18, w: 913, h: 18, d: 564 },
+        { name: "Suốt treo áo dài Inox phi 25mm buồng trái", x: 338, y: 2120, z: 290, w: 913, h: 25, d: 25 },
+        { name: "Đợt ngang chia tầng giữa buồng trái", x: 338, y: 920, z: 18, w: 913, h: 18, d: 564 },
+        { name: "Đợt ngang chia ngăn đáy buồng trái", x: 338, y: 494, z: 18, w: 913, h: 18, d: 564 },
+
+        // 3. Buồng phải (Suốt treo ngắn + 4 ngăn kéo)
+        { name: "Đợt ngang chia khoang nóc phải", x: 1269, y: 2218, z: 18, w: 913, h: 18, d: 564 },
+        { name: "Suốt treo áo sơ mi Inox phi 25mm buồng phải", x: 1269, y: 2120, z: 290, w: 913, h: 25, d: 25 },
+        { name: "Đợt ngang nóc cụm ngăn kéo", x: 1269, y: 920, z: 18, w: 913, h: 18, d: 564 },
+        { name: "Vách dọc chia 2 cột ngăn kéo", x: 1716, y: 88, z: 18, w: 18, h: 832, d: 564 },
+        { name: "Đợt ngang chia tầng ngăn kéo", x: 1269, y: 494, z: 18, w: 913, h: 18, d: 564 },
+
+        // 4. Kệ góc hở trái
+        { name: "Hộc tủ đáy kệ góc", x: 0, y: 88, z: 18, w: 320, h: 406, d: 564 },
+        { name: "Cánh mở hộc đáy kệ góc", x: 0, y: 88, z: 0, w: 320, h: 406, d: 18 },
+        { name: "Đợt kệ góc hở tầng 1", x: 0, y: 850, z: 18, w: 320, h: 18, d: 564 },
+        { name: "Đợt kệ góc hở tầng 2", x: 0, y: 1250, z: 18, w: 320, h: 18, d: 564 },
+        { name: "Đợt kệ góc hở tầng 3", x: 0, y: 1650, z: 18, w: 320, h: 18, d: 564 },
+        { name: "Đợt kệ góc hở tầng 4", x: 0, y: 2050, z: 18, w: 320, h: 18, d: 564 },
+        { name: "Đợt kệ góc hở tầng 5 (nóc kệ)", x: 0, y: 2350, z: 18, w: 320, h: 18, d: 564 },
+
+        // 5. Cụm 4 ngăn kéo
+        { name: "Mặt ngăn kéo dưới trái", x: 1273, y: 92, z: 0, w: 439, h: 398, d: 18 },
+        { name: "Mặt ngăn kéo dưới phải", x: 1738, y: 92, z: 0, w: 439, h: 398, d: 18 },
+        { name: "Mặt ngăn kéo trên trái", x: 1273, y: 498, z: 0, w: 439, h: 418, d: 18 },
+        { name: "Mặt ngăn kéo trên phải", x: 1738, y: 498, z: 0, w: 439, h: 418, d: 18 },
+
+        // 6. Cánh mở màu trắng
+        { name: "Cánh lật nóc buồng trái 1", x: 338, y: 2236, z: 0, w: 452, h: 370, d: 18 },
+        { name: "Cánh lật nóc buồng trái 2", x: 795, y: 2236, z: 0, w: 452, h: 370, d: 18 },
+        { name: "Cánh lật nóc buồng phải 1", x: 1269, y: 2236, z: 0, w: 452, h: 370, d: 18 },
+        { name: "Cánh lật nóc buồng phải 2", x: 1726, y: 2236, z: 0, w: 452, h: 370, d: 18 },
+        { name: "Cánh mở đứng dài buồng trái 1", x: 338, y: 88, z: 0, w: 452, h: 2126, d: 18 },
+        { name: "Cánh mở đứng dài buồng trái 2", x: 795, y: 88, z: 0, w: 452, h: 2126, d: 18 },
+        { name: "Cánh mở đứng buồng phải 1", x: 1269, y: 920, z: 0, w: 452, h: 1294, d: 18 },
+        { name: "Cánh mở đứng buồng phải 2", x: 1726, y: 920, z: 0, w: 452, h: 1294, d: 18 },
+      ],
+      holes: [
+        { x: 338, y: 2120, z: 290, diameter: 25, axis: "x" },
+        { x: 2182, y: 2120, z: 290, diameter: 25, axis: "x" },
+        { x: 1251, y: 2606, z: 290, diameter: 15, axis: "y" },
+        { x: 1251, y: 70, z: 290, diameter: 15, axis: "y" },
+      ],
+      notes: [
+        "Ván MDF lõi xanh chống ẩm HMR Thái Lan dày 18mm phủ Melamine vân gỗ sồi",
+        "Mặt cánh sơn bệt trắng cao cấp chạy rãnh CNC quả trám tinh xảo",
+        "Cắt xẻ và khoan lỗ cam chốt chính xác trên máy CNC Nesting 4 đầu",
+        "Trang bị 2 suốt treo Inox oval phi 25mm và 4 bộ ray trượt bi 3 tầng giảm chấn",
+        "Bản lề hơi thủy lực giảm chấn Inox 304 chống rỉ sét",
+        "Kệ góc hở 5 tầng bo tròn bán kính R320 chống va chạm an toàn",
+      ],
+    },
+  },
+  {
     name: "Pát đỡ tam giác chịu lực CNC",
     category: "Pát đỡ & Chi tiết máy",
     description: "Pát đỡ chữ L thép tấm 4.0mm kết hợp gân tam giác tăng cứng khoét 3 lỗ thoát trọng lượng phong cách cơ khí công nghiệp. Sơn tĩnh điện sần đen cao cấp chống rỉ sét, chịu tải trọng lớn lên đến 80kg/cặp, liên kết bắt vít nở tường bê tông và bắt vít đợt kệ phẳng.",
@@ -290,9 +370,22 @@ export const INITIAL_PRODUCTS: Omit<ProductItem, "id">[] = [
 ];
 
 /**
+ * Kiểm tra cấu hình kết nối database có hợp lệ hay đang dùng dummy config
+ */
+export function isDatabaseConfigured(): boolean {
+  const url = process.env.DATABASE_URL;
+  if (!url || url.includes("username:password@localhost:5432") || url.trim() === "") {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Tự động tạo hoặc đồng bộ dữ liệu mẫu khởi tạo vào database
  */
 export async function seedProductsIfEmpty(): Promise<void> {
+  if (!isDatabaseConfigured()) return;
+
   try {
     for (const p of INITIAL_PRODUCTS) {
       const existing = await prisma.product.findFirst({
@@ -329,17 +422,24 @@ export async function seedProductsIfEmpty(): Promise<void> {
 }
 
 /**
- * Lấy danh sách toàn bộ sản phẩm mẫu từ Database
+ * Lấy danh sách toàn bộ sản phẩm mẫu từ Database (hoặc danh sách khởi tạo mặc định)
  */
 export async function getSampleProducts(): Promise<ProductItem[]> {
+  if (!isDatabaseConfigured()) {
+    return INITIAL_PRODUCTS.map((p, idx) => ({ ...p, id: `seed-${idx + 1}` })) as unknown as ProductItem[];
+  }
+
   try {
     await seedProductsIfEmpty();
     const list = await prisma.product.findMany({
       orderBy: { createdAt: "desc" },
     });
-    return list as unknown as ProductItem[];
+    if (list && list.length > 0) {
+      return list as unknown as ProductItem[];
+    }
+    return INITIAL_PRODUCTS.map((p, idx) => ({ ...p, id: `seed-${idx + 1}` })) as unknown as ProductItem[];
   } catch (err) {
-    console.error("[Products] Error fetching products:", err);
+    console.warn("[Products] Database not available, fallback to initial products:", (err as Error)?.message || err);
     return INITIAL_PRODUCTS.map((p, idx) => ({ ...p, id: `seed-${idx + 1}` })) as unknown as ProductItem[];
   }
 }
@@ -348,20 +448,44 @@ export async function getSampleProducts(): Promise<ProductItem[]> {
  * Lấy chi tiết 1 sản phẩm theo ID
  */
 export async function getProductById(id: string): Promise<ProductItem | null> {
-  try {
-    await seedProductsIfEmpty();
-    const product = await prisma.product.findUnique({
-      where: { id },
-    });
-    if (product) return product as unknown as ProductItem;
-    // Kiểm tra trong initial products nếu id bắt đầu bằng seed-
-    const fallbackIdx = INITIAL_PRODUCTS.findIndex((_, idx) => `seed-${idx + 1}` === id);
-    if (fallbackIdx >= 0) {
-      return { ...INITIAL_PRODUCTS[fallbackIdx], id } as unknown as ProductItem;
+  if (!id) return null;
+
+  // 1. Nếu id có dạng seed-1, seed-2... trả về trực tiếp từ INITIAL_PRODUCTS
+  if (id.startsWith("seed-")) {
+    const match = id.match(/^seed-(\d+)$/);
+    if (match) {
+      const idx = parseInt(match[1], 10) - 1;
+      if (idx >= 0 && idx < INITIAL_PRODUCTS.length) {
+        return { ...INITIAL_PRODUCTS[idx], id } as unknown as ProductItem;
+      }
     }
-    return null;
-  } catch (err) {
-    console.error("[Products] Error fetching product by ID:", err);
-    return null;
+    const found = INITIAL_PRODUCTS.find((p) => (p as any).id === id);
+    if (found) return { ...found, id } as unknown as ProductItem;
   }
+
+  // 2. Nếu là UUID hợp lệ và database đã sẵn sàng, truy vấn DB
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  if (isUuid && isDatabaseConfigured()) {
+    try {
+      const product = await prisma.product.findUnique({
+        where: { id },
+      });
+      if (product) return product as unknown as ProductItem;
+    } catch (err) {
+      console.warn("[Products] Error fetching product by UUID from DB:", err);
+    }
+  }
+
+  // 3. Fallback: tìm trong INITIAL_PRODUCTS theo index hoặc tên
+  const fallbackIdx = INITIAL_PRODUCTS.findIndex((_, idx) => `seed-${idx + 1}` === id);
+  if (fallbackIdx >= 0) {
+    return { ...INITIAL_PRODUCTS[fallbackIdx], id: `seed-${fallbackIdx + 1}` } as unknown as ProductItem;
+  }
+
+  const byName = INITIAL_PRODUCTS.find((p) => p.name === id);
+  if (byName) {
+    return { ...byName, id } as unknown as ProductItem;
+  }
+
+  return null;
 }

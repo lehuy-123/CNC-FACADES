@@ -14,7 +14,7 @@ import {
   render3dViewSvg,
 } from "@/lib/cad-drawing";
 import { prisma } from "@/lib/prisma";
-import { getProductById, INITIAL_PRODUCTS } from "@/lib/data/products";
+import { getProductById, INITIAL_PRODUCTS, isDatabaseConfigured } from "@/lib/data/products";
 
 export type AiSketchStyle = "blueprint" | "render3d";
 
@@ -845,13 +845,25 @@ export async function generateParametricDesign(
   userInputs: UserParametricInputs
 ): Promise<ParametricDesignResult> {
   try {
-    // 1. Truy vấn database lấy thông tin sản phẩm gốc
-    let product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
+    // 1. Truy vấn database hoặc template khởi tạo lấy thông tin sản phẩm gốc
+    let product: any = null;
 
-    if (!product) {
-      product = (await getProductById(productId)) as any;
+    if (productId.startsWith("seed-")) {
+      product = await getProductById(productId);
+    } else {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
+      if (isUuid && isDatabaseConfigured()) {
+        try {
+          product = await prisma.product.findUnique({
+            where: { id: productId },
+          });
+        } catch (e) {
+          console.warn("[Parametric] DB query failed, falling back to getProductById:", e);
+        }
+      }
+      if (!product) {
+        product = await getProductById(productId);
+      }
     }
 
     if (!product) {
@@ -1062,7 +1074,7 @@ export async function generateParametricDesign(
       message: `Đã tính toán tham số CAD thành công theo khuôn mẫu: ${product.name}`,
     };
   } catch (error) {
-    console.error("generateParametricDesign error:", error);
+    console.warn("generateParametricDesign error:", error);
     return {
       success: false,
       message: "Có lỗi khi tính toán thiết kế theo tham số. Vui lòng thử lại.",
